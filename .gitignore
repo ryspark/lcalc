@@ -1,0 +1,6 @@
+# Compiled files
+*.pyc
+
+# Pycharm files
+.idea/
+.DS_STORE
