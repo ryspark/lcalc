@@ -1,0 +1,11 @@
+-- Basic arithmetic with Church numerals
+-- Sources: https://en.wikipedia.org/wiki/Church_encoding#Calculation_with_Church_numerals,
+--          https://personal.utdallas.edu/~gupta/courses/apl/lambda.pdf
+
+SUCC  := λn.λf.λx.f (n f x)
+PRED  := λn.λf.λx.n (λg.λh.h (g f)) (λu.x) (λu.u)
+
++     := λm.λn SUCC m
+-     := λm.λn.n PRED m
+*     := λm.λn.λf.m (n f)
+**    := λm.λn n m

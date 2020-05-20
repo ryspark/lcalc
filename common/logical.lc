@@ -1,0 +1,19 @@
+#INCLUDE "numerical.lc"
+
+-- Basic logical operations
+-- Source: https://personal.utdallas.edu/~gupta/courses/apl/lambda.pdf
+
+TRUE   := λx.λy.x
+FALSE  := λx.λy.y
+
+AND    := λx.λy.x y FALSE
+OR     := λx.λy.x TRUE y
+NOT    := λx.x FALSE TRUE
+
+ISZERO := λx.x FALSE NOT FALSE
+=      := λx.λy.AND (>= x y) (>= x y)
+!=     := λx.λy.NOT (= x y)
+>=     := λx.λy.ISZERO (x PRED y)
+>      := λx.λy.NOT (<= x y)
+<=     := λx.λy.NOT (> x y)
+<      := λx.λy.NOT (>= x y)
