@@ -1,6 +1,7 @@
 import unittest
 
-from interpreter import numerical, term
+from interpreter import term
+from interpreter.lang import numerical
 
 
 class NumericalTestCase(unittest.TestCase):
@@ -10,7 +11,7 @@ class NumericalTestCase(unittest.TestCase):
         for case in should_fail:
             self.assertRaises(AssertionError, numerical.ChurchNumeral, number=case)
 
-        success_tests = { 0: "λf.λx.x", 3: "λf.λx.f (f (f (x)))"}
+        success_tests = {0: "λf.λx.x", 3: "λf.λx.f (f (f (x)))"}
         for case, result in success_tests.items():
             self.assertEqual(numerical.ChurchNumeral(case).term, term.LambdaTerm(result))
 
