@@ -8,7 +8,7 @@ Formally, pure lambda calculus grammar can be succintly defined as
                | <LambdaExpr> <LambdaExpr>          ; called an application (is a LambdaTerm)
                                                     ; - associating by left: abcd = ((((a) b) c) d)
 
-Note that LambdaVar and LambdaExpr are the only non-terminals in lambda calculus.
+Note that applications and abstractions are the only non-terminals in lambda calculus.
 
 The `pure` directory contains pure lambda calculus AST generation and parsing- not sufficient for the lc language.
 
@@ -31,21 +31,8 @@ Relatedly, this feature means that function application must be separated by spa
 
 from abc import ABC, abstractmethod
 
-####################################### Invariants #######################################
-INVARIATES = {
-    "<bind>": "λ",  # binds variables to Abstraction
-    "<decl>": ".",  # precedes Abstraction body/declaration
-    "<open>": "(",
-    "<close>": ")",
-}
-
-
-def invariates():
-    return INVARIATES.values()
-
-
 ####################################### Lambda calculus syntax #######################################
-class Nonterminal(ABC):
+class LambdaTerm(ABC):
 
     @staticmethod
     @abstractmethod
@@ -61,7 +48,7 @@ class Nonterminal(ABC):
         return self.__repr__()
 
 
-class LambdaVar(Nonterminal):
+class LambdaVar(LambdaTerm):
 
     def __init__(self, expr, check=False):
         if check:
@@ -71,57 +58,30 @@ class LambdaVar(Nonterminal):
     @staticmethod
     def check_grammar(expr):
         # checked/actual LambdaVar format is: <alpha> (must be alphabetic character, no other requirements)
-        return expr.isalpha()
+        return expr.isalpha() and "λ" not in expr
 
 
-class LambdaExpr(Nonterminal):
+class LambdaExpr(LambdaTerm):
 
     def __init__(self, expr, check=False):
         if check:
             assert LambdaExpr.check_grammar(expr), "'{}' not proper LambdaExpr grammar".format(expr)
 
-        self.bound_vars = LambdaExpr.get_bound_vars(expr)
-        self.body = LambdaExpr.get_body(expr, add_parens=True)
-
-        bind, decl, __, __ = invariates()
-        self.expr = bind + self.bound_vars + decl + self.body
-
-    @staticmethod
-    def get_bound_vars(expr):
-        # assumes first LambdaExpr check has been run on expr
-        return expr[1:expr.index(INVARIATES["<decl>"])]
-
-    @staticmethod
-    def get_body(expr, add_parens):
-        # assume that check_grammar has validated expr
-        __, __, open_paren, close_paren = invariates()
-
-        # get body of LambdaExpr with format "λ" <LambdaVar> "." <LambdaTerm>
-        bind_idx = expr.index(INVARIATES["<bind>"])
-        body = expr[bind_idx + 1:]
-
-        if add_parens:
-            # if expr is enclosed in parentheses, make sure they match; otherwise, add parenthese
-            if body[0] == open_paren:
-                assert body[-1] == close_paren, "'{}' parentheses do not match".format(expr)
-            else:
-                body = open_paren + body + close_paren
-
-        return body
+        self.expr = expr
+        self.bound_vars = expr[1:expr.index(".")]
+        self.body = expr[expr.index("λ") + 1:]
 
     @staticmethod
     def check_grammar(expr):
         # checked LambdaExpr format is "λ" <LambdaVar> "." anything (anything will be recursively checked)
         # actual LambdaExpr format is "λ" <LambdaVar> "." <LambdaExpr> (not checked until LambdaAST)
 
-        bind = INVARIATES["<bind>"]
-
-        # first check: are required invariates (<lambda>, .) in expr?
-        if not (bind in expr and expr.index(bind) == 0) or not "." in expr:
+        # first check: are required invariates (λ, .) in expr?
+        if not ("λ" in expr and expr.index("λ") == 0) or not "." in expr:
             return False
 
         # second check: is bound variable list valid?
-        if not LambdaExpr.get_bound_vars(expr).isalpha():
+        if not expr[1:expr.index(".")].isalpha():
             return False
 
         # expr matches above checked format
@@ -150,23 +110,40 @@ class LambdaAST:
 
         Source: https://opendsa-server.cs.vt.edu/ODSA/Books/PL/html/Syntax.html
         """
-        bind, decl, open_paren, close_paren = invariates()
-        split = []
 
+        # 0. make sure parentheses match
+        assert expr.count("(") == expr.count(")"), "parentheses mismatch in {}".format(expr)
+
+        # 1. find the top-level matching parentheses
+        parens_idxs = []
         start, extras = None, 0
+
         for idx, char in enumerate(expr):
-            if char == open_paren:
+            if char == "(":
                 if start is None:
-                    start = idx + 1  # expr[idx] is open_paren, so don't include that
+                    start = idx + 1  # expr[idx] == (, so don't include that
                 else:
                     extras += 1
 
-            elif char == close_paren:
+            elif char == ")":
                 if extras == 0 and start:
-                    split.append(expr[start:idx])
+                    parens_idxs.extend((start, idx))
                     start, extras = None, 0
                 else:
                     extras -= 1
+
+        # 2. split using the results from part 1 and by spaces
+        parens_idxs.insert(0, 0)
+        parens_idxs.append(len(expr))
+        # above two lines needed to make sure that the whole expr gets parsed
+
+        split = []
+        for num in range(len(parens_idxs) - 1):
+            chunk = expr[parens_idxs[num]:parens_idxs[num+1]]
+            if num == 0 or num % 2 == 0:
+                split.extend(filter(lambda char: char not in ("(", ")", ""), chunk.split(" ")))
+            else:
+                split.append(chunk)
 
         return split
 
@@ -196,5 +173,4 @@ class LambdaAST:
         return self.__repr__()
 
 
-if __name__ == "__main__":
-    print(LambdaAST("((z) (λx.λy.z)) ((x) (y))"))
+if __name__ == "__main__": ...
