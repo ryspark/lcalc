@@ -1,4 +1,4 @@
-from interpreter.grammar.pure import LambdaExpr
+from interpreter.pure.lexical import LambdaExpr, invariates
 
 
 def to_church_numeral(number):
@@ -10,9 +10,10 @@ def to_church_numeral(number):
     """
     assert isinstance(number, int) and number >= 0, "only natural numbers supported"
 
-    lambda_term = "λf.λx."
-    for _ in range(number):
-        lambda_term += "f ("
-    lambda_term += "x" + ")" * lambda_term.count("(")
+    bind, decl, open_paren, close_paren = invariates()
 
-    return LambdaExpr(lambda_term)
+    header = "{}f{}{}x{}".format(bind, decl, bind, decl)
+    composed = "f {}".format(open_paren) * number
+    application = "x" + close_paren * composed.count(close_paren)
+
+    return LambdaExpr(header + composed + application)
