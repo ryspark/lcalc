@@ -1,4 +1,8 @@
-"""Lambda calculus (pure) interpreter.
+"""Lambda calculus interpreter.
+
+For reference:
+- "Pure lambda calculus": lambda calculus as defined by Church
+- "lc language": lambda calculus + syntax used in .lc files
 
 Writing this without much knowledge of how modern compilers/interpreters do their jobs, so it's bound to be pretty
 awful :). Basic program flow:

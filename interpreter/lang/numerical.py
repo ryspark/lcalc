@@ -2,9 +2,9 @@ from interpreter.grammar.pure import LambdaExpr
 
 
 def to_church_numeral(number):
-    """Natural numbers encoded as Church numerals. Note that operations are not implemented here- see
-    common/numerical.pure. Note that ChurchNumeral is implemented using pure syntax, thus keeping everything pure as
-    possible.
+    """Natural numbers encoded as Church numerals. Note that operations are not implemented here (see
+    common/numerical.lc) and that ChurchNumeral is implemented using lambda calculus syntax, thus keeping
+    everything pure as possible.
 
     Source: https://en.wikipedia.org/wiki/Church_encoding#Calculation_with_Church_numerals
     """
