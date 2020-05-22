@@ -1,44 +1,62 @@
 import unittest
 
-from interpreter.pure.lexical import Variable, Abstraction, LambdaAST
+from interpreter.pure.lexical import Abstraction, Application, Invariate, Variable
 
-class LambdaTermTestCase(unittest.TestCase):
+class VariableTestCase(unittest.TestCase):
 
-    def test_Variable(self):
+    def test_check_grammar(self):
         should_fail = ["awe3", "6awfe", ".", ".ew", "λx"]
         for case in should_fail:
             self.assertFalse(Variable.check_grammar(case), case)
 
-        should_pass = ["a", "bawef", "aE"]
+        should_pass = ["a", "b", "c", "afw", "ba"]
         for case in should_pass:
             self.assertTrue(Variable.check_grammar(case), case)
 
-    def test_Abstraction(self):
-        should_fail = ["λxx", ".λx.x", "x.x", "λx[x]", "λxy.λab.a(f)(e)xy"]
+class AbstractionTestCase(unittest.TestCase):
+
+    def test_check_grammar(self):
+        should_fail = ["λxx", ".λx.x", "x.x", "λx[x]", "λx.x λy.y", "λxy.a λab.a(f)(e)xy"]
         for case in should_fail:
             self.assertFalse(Abstraction.check_grammar(case), case)
 
-        should_pass = ["λx.x", "λxy.xy", "λafe.(afe)"]
+        should_pass = ["λx.x", "λxy.xy", "λafe.(afe)", "λxy.λab.a(f)(e)xy"]
         for case in should_pass:
             self.assertTrue(Abstraction.check_grammar(case), case)
 
+    def test_step_tokenize(self):
+        cases = {
+            "λx.λy.λz.x (y z)": [Invariate("λ"), Variable("x"), Invariate("."), Abstraction("λy.λz.x (y z)")],
+            "λy.λz.x (y z)": [Invariate("λ"), Variable("y"), Invariate("."), Abstraction("λz.x (y z)")],
+            "λz.x(y z)": [Invariate("λ"), Variable("z"), Invariate("."), Application("x(y z)")]
+        }
 
-class LambdaASTTestCase(unittest.TestCase):
+        for case, expected in cases.items():
+            self.assertEqual(expected, Abstraction(case).step_tokenize(), case)
+
+
+class ApplicationTestCase(unittest.TestCase):
+
+    def test_check_grammar(self):
+        should_fail = ["xxy", "λx.(λx", "λx.x", "x", "(λx.x))", ")λx.x(", "(λx.λy.(x y z)))((z)λx.x(y))"]
+        for case in should_fail:
+            self.assertFalse(Application.check_grammar(case), case)
+
+        should_pass = ["(λx.x)", "((λx.λz.(y x (x z))) x y ) z a (f n)", "((λx.x (y z)))"]
+        for case in should_pass:
+            self.assertTrue(Application.check_grammar(case), case)
 
     def test_step_tokenize(self):
-        should_fail = ["λx.(λx", ")λx.x", "(λx.(x)", "(x)λx.x)"]
-        for case in should_fail:
-            self.assertRaises(AssertionError, LambdaAST.step_tokenize, case)
-
-        should_pass = {
-            "(x y) y (x y)": ["x y", "y", "x y"],
-            "(z λx.λy.z) (x y)": ["z λx.λy.z", "x y"],
-            "((z) (λx.λy.z)) ((x) (y))": ["(z) (λx.λy.z)", "(x) (y)"],
-            "((λx.x) λx.x) λxy.y λabc.a": ["(λx.x) λx.x", "λxy.y", "λabc.a"],
-            # "((λx.x) λx.x) λxy.y x": ["(λx.x) λx.x", "λxy.y x"]
+        cases = {
+            "(x y) y (x y)": [Application("x y"), Variable("y"), Application("x y")],
+            "(z λx.λy.z) (x y)": [Application("z λx.λy.z"), Application("x y")],
+            "((z) (λx.λy.z)) ((x) (y))": [Application("(z) (λx.λy.z)"), Application("(x) (y)")],
+            "((λx.x) λx.x) λxy.y λabc.a": [Application("(λx.x) λx.x"), Abstraction("λxy.y"), Abstraction("λabc.a")],
+            "((λx.x) λx.x) λxy.(y x)": [Application("(λx.x) λx.x"), Abstraction("λxy.y x")],
+            "((λx.x) λx.x) λxy.y x  ": [Application("(λx.x) λx.x"), Abstraction("λxy.y x")]
         }
-        for case, result in should_pass.items():
-            self.assertEqual(result, LambdaAST.step_tokenize(case))
+        for case, expected in cases.items():
+            self.assertEqual(expected, Application(case).step_tokenize(), case)
 
 
 if __name__ == '__main__':

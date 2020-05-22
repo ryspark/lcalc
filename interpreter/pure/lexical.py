@@ -26,6 +26,21 @@ means that function application must be separated by spaces or parentheses.
 """
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+import re
+
+####################################### Invariates #######################################
+@dataclass(init=False)
+class Invariate:
+    char: str
+
+    def __init__(self, char):
+        assert char in ("λ", ".", "(", ")"), "{} not an invariate".format(char)
+        self.char = char
+
+    def display(self, indents=0):
+        return "    " * (indents if indents <= 1 else indents // 2) + self.__str__()
+
 
 ####################################### Lambda calculus syntax #######################################
 class LambdaTerm(ABC):
@@ -34,52 +49,107 @@ class LambdaTerm(ABC):
         if check:
             assert self.check_grammar(expr), "'{}' not valid {} grammar".format(expr, type(self).__name__)
         self.expr = expr
+        self.nodes = []
 
     @staticmethod
     @abstractmethod
-    def check_grammar(expr): ...
+    def check_grammar(expr):
+        """"This method should check expr's top-level grammar and return whether or not it is valid."""
+        pass
 
-    def __repr__(self):
-        attrs = "{}(".format(type(self).__name__)
-        for name, val in self.__dict__.items():
-            attrs += "{}='{}', ".format(name, val)
-        return attrs.rstrip(", ") + ")"
+    @abstractmethod
+    def step_tokenize(self):
+        """This method should tokenize a LambdaTerm only one level down. Assumes top-level grammar has been checked,
+        but raises an error if second-level grammar is not valid. Should set self.nodes attrs but also return tokenized.
+
+        Examples: "(x y) (λx.λy.λz.x (y z))" -> [Application("x y"), Abstraction("λx.λy.λz.x (y z)")]
+                  "λx.λy.λz.x (y z)" -> [Variable("x"), Abstraction("λy.λz.x (y z)")]
+
+        Source: https://opendsa-server.cs.vt.edu/ODSA/Books/PL/html/Syntax.html
+        """
+        pass
+
+    @staticmethod
+    def infer_type(expr):
+        """Converts expr to the proper LambdaTerm type"""
+        for cls in LambdaTerm.__subclasses__():
+            subclass = globals()[cls.__name__]
+            if subclass.check_grammar(expr):
+                return subclass(expr)
+        raise ValueError("'{}' not valid LambdaTerm grammar".format(expr))
+
+    def display(self, indents=0):
+        name_indents = indents if indents <= 1 else indents // 2
+        nodes = "{}{}(expr='{}'".format("    " * name_indents, type(self).__name__, self.expr)
+        
+        if self.nodes:
+            nodes += ", nodes=["
+            for node in self.nodes:
+                nodes += "\n{}".format("    " * indents) + node.display(indents + 1) + ","
+            nodes += "\n{}]".format("    " * indents)
+        
+        return nodes + ")"
 
     def __str__(self):
         return self.__repr__()
+
+    def __repr__(self):
+        return "{}('{}')".format(type(self).__name__, self.expr)
+
+    def __eq__(self, other):
+        return hasattr(other, "expr") and self.expr == other.expr
 
 
 class Variable(LambdaTerm):
 
     @staticmethod
+    def strip(expr):
+        return expr.replace("(", "").replace(")", "")
+
+    @staticmethod
     def check_grammar(expr):
-        """Accepted/actual Variable format: <alpha> (alphabetic character, possibly with parentheses)"""
-        expr = expr.replace("(", "").replace(")", "")
-        return expr.isalpha() and len(expr) == 1 and "λ" not in expr
+        """Accepted/actual Variable format: <alpha> (alphabetic character(s), possibly with parentheses)"""
+        # check 1: is expr valid alphabetic character(s)?
+        return Variable.strip(expr).isalpha() and "λ" not in expr
+
+    def step_tokenize(self):
+        raise ValueError("Variable object is a terminal")
 
 
 class Abstraction(LambdaTerm):
 
     @staticmethod
+    def get_body(expr):
+        """Assumes grammar check has been run."""
+        return expr[expr.index(".") + 1:]
+
+    @staticmethod
     def check_grammar(expr):
         """This implementation of Abstraction differs from the actual lambda calculus definition.
         - Actual Abstraction format: "λ" <Variable> "." <LambdaTerm> (optional parentheses not shown)
-        - Accepted Abstraction format: "λ" <Variable> "." <Variable>+ (optional parentheses not shown)
+        - Accepted Abstraction format: "λ" <Variable> "." <^Application> (optional parentheses not shown)
 
         The reason for this discrepancy is to delegate recursive token parsing to LambdaAST.
 
         """
-
-        # check 1: are required invariates (λ, .) in expr?
-        if not ("λ" in expr and expr.index("λ") == 0) or not "." in expr:
+        # check 1: are required invariates (λ, .) correctly placed within expr?
+        if not expr.find("λ") == 0 or "." not in expr:
             return False
 
-        # check 2: is bound variable list valid?
-        if not expr[1:expr.index(".")].isalpha():
+        # check 2: is bound variable valid?
+        if not Variable.check_grammar(expr[1]):
             return False
 
-        # check 3: is the definition a valid Application or Variable?
-        return Variable.check_grammar(expr) or Application.check_grammar(expr)
+        # check 3: is it an Application in disguise? (ex: λx.x λy.y)
+        body = Abstraction.get_body(expr)
+        return "λ" not in body or body.index("λ") == 0
+
+    def step_tokenize(self):
+        bound_var = Variable(self.expr[1])
+        body = LambdaTerm.infer_type(self.expr[self.expr.index(".") + 1:])
+
+        self.nodes = [Invariate("λ"), bound_var, Invariate("."), body]
+        return self.nodes
 
 
 class Application(LambdaTerm):
@@ -87,46 +157,38 @@ class Application(LambdaTerm):
     @staticmethod
     def check_grammar(expr):
         """This implementation of Application differs from the actual lambda calculus definition.
-        - Actual Application format: <LambdaTerm> <LambdaTerm>
-        - Accepted Application format: <Abstraction> <Abstraction> | <Variable> <Variable>
+        - Actual Application format: <LambdaTerm>+ (grouped by parentheses and spaces)
+        - Accepted Application format: <^[Invariate, Variable, Abstraction]> (grouped by parentheses and spaces)
 
         The reason for this discrepancy is twofold: to delegate recursive token parsing to LambdaAST,
         but also to comply with definition of Abstraction (see check 3 in Abstraction)
 
         """
-        pass
+        # check 1: do parentheses match?
+        if expr.count("(") != expr.count(")"):
+            return False
 
+        # check 2: is it not a valid Variable or Abstraction?
+        if Variable.check_grammar(expr) or Abstraction.check_grammar(expr):
+            return False
 
-####################################### Lambda calculus syntax tree #######################################
-class LambdaAST:
-    """Implements a syntax tree builder as well as normal-order beta reduction of that syntax tree.
+        # check 3: are parentheses syntactically correct?
+        paren_balance = 0
+        for char in expr:
+            if paren_balance < 0:
+                return False
+            elif char == "(":
+                paren_balance += 1
+            elif char == ")":
+                paren_balance -= 1
+        return paren_balance == 0
 
-    Sources: https://opendsa-server.cs.vt.edu/ODSA/Books/PL/html/Syntax.html,
-             https://opendsa-server.cs.vt.edu/ODSA/Books/PL/html/ReductionStrategies.html
-    """
-
-    def __init__(self, expr):
-        self.expr = expr
-        self.tree = []
-
-    @staticmethod
-    def step_tokenize(expr):
-        """Tokenzies expr only one level down.
-
-        For example, `a λx.λy.z x y` gets tokenized into ["a", "λx.y.z x y"], while `(λx.y.z.z (x y)) b` gets
-        tokenized into ["λx.y.z.z (x y)", "b"].
-
-        Source: https://opendsa-server.cs.vt.edu/ODSA/Books/PL/html/Syntax.html
-        """
-
-        # 0. make sure parentheses match
-        assert expr.count("(") == expr.count(")"), "parentheses mismatch in {}".format(expr)
-
+    def step_tokenize(self):
         # 1. find the top-level matching parentheses
-        parens_idxs = []
+        parens_idxs = [0]  # needed for part 2
         start, extras = None, 0
 
-        for idx, char in enumerate(expr):
+        for idx, char in enumerate(self.expr):
             if char == "(":
                 if start is None:
                     start = idx + 1  # expr[idx] == (, so don't include that
@@ -141,45 +203,41 @@ class LambdaAST:
                     extras -= 1
 
         # 2. split using the results from part 1 and by spaces
-        parens_idxs.insert(0, 0)
-        parens_idxs.append(len(expr))
-        # above two lines needed to make sure that the whole expr gets parsed
+        parens_idxs.append(len(self.expr))  # needed to make sure that the whole expr gets parsed
 
         split = []
         for num in range(len(parens_idxs) - 1):
-            chunk = expr[parens_idxs[num]:parens_idxs[num + 1]]
+            chunk = self.expr[parens_idxs[num]:parens_idxs[num + 1]]
             if num == 0 or num % 2 == 0:
-                split.extend(filter(lambda char: char not in ("(", ")", ""), chunk.split(" ")))
+                split.extend(filter(lambda expr: expr not in ("", "(", ")"), chunk.split(" ")))
             else:
                 split.append(chunk)
 
-        return split
+        self.nodes = list(map(LambdaTerm.infer_type, split))
+        return self.nodes
 
-    def parse_token(self, expr):
-        # implemented with recursion principles, but without actually using recursion
 
-        if Variable.check_grammar(expr):
-            # "base case" 1: expr is a valid Variable
-            return Variable(expr)
-        elif Abstraction.check_grammar(expr):
-            # "base case" 2: expr is a valid Abstraction
-            return Abstraction(expr)
-        elif Application.check_grammar(expr):
-            # "base case" 3: expr is valid Application
-            return Application(expr)
-        else:
-            # "recursion" otherwise
-            return LambdaAST.step_tokenize(expr)
+####################################### Lambda calculus syntax tree #######################################
+class LambdaAST:
+    """Implements a syntax tree builder as well as normal-order beta reduction of that syntax tree.
 
-    def beta_reduce(self):
-        raise NotImplementedError()
+    Sources: https://opendsa-server.cs.vt.edu/ODSA/Books/PL/html/Syntax.html,
+             https://opendsa-server.cs.vt.edu/ODSA/Books/PL/html/ReductionStrategies.html
+    """
+
+    def __init__(self, expr):
+        self.expr = expr
+        self.tree = LambdaTerm.infer_type(expr)
+        LambdaAST.generate_tree(self.tree)
+
+    @staticmethod
+    def generate_tree(node):
+        if not isinstance(node, Variable) and not isinstance(node, Invariate):
+            for sub_node in node.step_tokenize():
+                LambdaAST.generate_tree(sub_node)
 
     def __repr__(self):
-        return str(self.tree)
+        return self.tree.__repr__()
 
     def __str__(self):
-        return self.__repr__()
-
-
-if __name__ == "__main__":
-    print(LambdaAST("((λx.x) λx.x) (λxy.y λabc.a) λxy.y"))
+        return self.tree.display()
