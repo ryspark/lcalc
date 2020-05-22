@@ -1,4 +1,4 @@
-from interpreter.pure.lexical import LambdaExpr
+from interpreter.pure.lexical import Abstraction
 
 
 def to_church_numeral(number):
@@ -14,4 +14,4 @@ def to_church_numeral(number):
     composed = "f (" * number
     application = "x" + ")" * composed.count("(")
 
-    return LambdaExpr(header + composed + application)
+    return Abstraction(header + composed + application)

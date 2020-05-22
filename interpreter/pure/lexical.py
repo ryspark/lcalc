@@ -1,31 +1,27 @@
 """Pure lambda calculus abstract syntax tree token generator and parser.
 
-Formally, pure lambda calculus grammar can be succintly defined as
-<LambdaExpr> ::= <LambdaVar>                        ; called a variable (is a LambdaTerm)
-                                                    ; - must be alphabetic character(s) (by convention, lowercase)
-               | "λ" <LambdaVar> "." <LambdaExpr>   ; called an abstraction (is a LambdaTerm)
-                                                    ; - currying is NOT allowed in this implementation (*)
-               | <LambdaExpr> <LambdaExpr>          ; called an application (is a LambdaTerm)
-                                                    ; - associating by left: abcd = ((((a) b) c) d)
+The `pure` directory contains pure lambda calculus AST generation and parsing- not sufficient for the lc language.
+
+Formally, pure lambda calculus can be defined as
+
+<λ-term> ::= <λ-term>                   ; "variable"
+                                        ; - must be alphabetic character(s) (by convention, lowercase)
+           | "λ" <λ-term> "." <λ-term>  ; "abstraction"
+                                        ; - currying is not supported in this implementation (*)
+           | <λ-term> <λ-term>          ; "application"
+                                        ; - associating by left: abcd = ((((a) b) c) d)
 
 Note that applications and abstractions are the only non-terminals in lambda calculus.
 
-The `pure` directory contains pure lambda calculus AST generation and parsing- not sufficient for the lc language.
-
-Sources: https://opendsa-server.cs.vt.edu/ODSA/Books/PL/html/Syntax.html,
-         https://plato.stanford.edu/entries/lambda-calculus/#Com
+Sources: https://plato.stanford.edu/entries/lambda-calculus/#Com
 
 ------------------------------------------------------------------------------------------------------------------------
 
-(*) Why disallow currying? Because it makes the use of multi-character LambdaVars ambiguous.
-
-For example, if currying is allowed, what does the expression `λint.x` mean?
-
-Should it evaluate to `λi.λn.λt.x` or is `int` a LambdVar? Thus, currying and multi-character LambdaVars cannot
-coexist without causing ambiguity. This implementation favors multi-character LambdaVars over currying, a purely
-arbitrary decision.
-
-Relatedly, this feature means that function application must be separated by spaces or parentheses
+(*) Why is currying not supported? Because it makes the use of multi-character Variable ambiguous. For example, if
+currying is allowed, what does the expression `λint.x` mean? Should it be resolved to `λi.λn.λt.x`, or is `int` a
+Variable name? Thus, currying and multi-character Variable cannot coexist without causing ambiguity. This
+implementation favors multi-character LambdaVars over currying, a purely arbitrary decision. Relatedly, this feature
+means that function application must be separated by spaces or parentheses.
 
 """
 
@@ -33,6 +29,11 @@ from abc import ABC, abstractmethod
 
 ####################################### Lambda calculus syntax #######################################
 class LambdaTerm(ABC):
+
+    def __init__(self, expr, check=False):
+        if check:
+            assert self.check_grammar(expr), "'{}' not valid {} grammar".format(expr, type(self).__name__)
+        self.expr = expr
 
     @staticmethod
     @abstractmethod
@@ -48,44 +49,52 @@ class LambdaTerm(ABC):
         return self.__repr__()
 
 
-class LambdaVar(LambdaTerm):
-
-    def __init__(self, expr, check=False):
-        if check:
-            assert LambdaVar.check_grammar(expr), "'{}' not proper LambdaVar grammar".format(expr)
-        self.name = expr
+class Variable(LambdaTerm):
 
     @staticmethod
     def check_grammar(expr):
-        # checked/actual LambdaVar format is: <alpha> (must be alphabetic character, no other requirements)
-        return expr.isalpha() and "λ" not in expr
+        """Accepted/actual Variable format: <alpha> (alphabetic character, possibly with parentheses)"""
+        expr = expr.replace("(", "").replace(")", "")
+        return expr.isalpha() and len(expr) == 1 and "λ" not in expr
 
 
-class LambdaExpr(LambdaTerm):
-
-    def __init__(self, expr, check=False):
-        if check:
-            assert LambdaExpr.check_grammar(expr), "'{}' not proper LambdaExpr grammar".format(expr)
-
-        self.expr = expr
-        self.bound_vars = expr[1:expr.index(".")]
-        self.body = expr[expr.index("λ") + 1:]
+class Abstraction(LambdaTerm):
 
     @staticmethod
     def check_grammar(expr):
-        # checked LambdaExpr format is "λ" <LambdaVar> "." anything (anything will be recursively checked)
-        # actual LambdaExpr format is "λ" <LambdaVar> "." <LambdaExpr> (not checked until LambdaAST)
+        """This implementation of Abstraction differs from the actual lambda calculus definition.
+        - Actual Abstraction format: "λ" <Variable> "." <LambdaTerm> (optional parentheses not shown)
+        - Accepted Abstraction format: "λ" <Variable> "." <Variable>+ (optional parentheses not shown)
 
-        # first check: are required invariates (λ, .) in expr?
+        The reason for this discrepancy is to delegate recursive token parsing to LambdaAST.
+
+        """
+
+        # check 1: are required invariates (λ, .) in expr?
         if not ("λ" in expr and expr.index("λ") == 0) or not "." in expr:
             return False
 
-        # second check: is bound variable list valid?
+        # check 2: is bound variable list valid?
         if not expr[1:expr.index(".")].isalpha():
             return False
 
-        # expr matches above checked format
-        return True
+        # check 3: is the definition a valid Application or Variable?
+        return Variable.check_grammar(expr) or Application.check_grammar(expr)
+
+
+class Application(LambdaTerm):
+
+    @staticmethod
+    def check_grammar(expr):
+        """This implementation of Application differs from the actual lambda calculus definition.
+        - Actual Application format: <LambdaTerm> <LambdaTerm>
+        - Accepted Application format: <Abstraction> <Abstraction> | <Variable> <Variable>
+
+        The reason for this discrepancy is twofold: to delegate recursive token parsing to LambdaAST,
+        but also to comply with definition of Abstraction (see check 3 in Abstraction)
+
+        """
+        pass
 
 
 ####################################### Lambda calculus syntax tree #######################################
@@ -99,10 +108,9 @@ class LambdaAST:
     def __init__(self, expr):
         self.expr = expr
         self.tree = []
-        self.generate_tree(expr)
 
     @staticmethod
-    def tokenize(expr):
+    def step_tokenize(expr):
         """Tokenzies expr only one level down.
 
         For example, `a λx.λy.z x y` gets tokenized into ["a", "λx.y.z x y"], while `(λx.y.z.z (x y)) b` gets
@@ -139,7 +147,7 @@ class LambdaAST:
 
         split = []
         for num in range(len(parens_idxs) - 1):
-            chunk = expr[parens_idxs[num]:parens_idxs[num+1]]
+            chunk = expr[parens_idxs[num]:parens_idxs[num + 1]]
             if num == 0 or num % 2 == 0:
                 split.extend(filter(lambda char: char not in ("(", ")", ""), chunk.split(" ")))
             else:
@@ -147,21 +155,21 @@ class LambdaAST:
 
         return split
 
-    def generate_tree(self, expr):
-        # -- base cases:
+    def parse_token(self, expr):
+        # implemented with recursion principles, but without actually using recursion
 
-        # 1. expr is a valid Variable
-        if LambdaVar.check_grammar(expr):
-            self.tree.append(LambdaVar(expr))
-
-        # 2. expr is a valid Abstraction
-        elif LambdaExpr.check_grammar(expr):
-            self.tree.append(LambdaExpr(expr))
-
-        # -- recursion otherwise
+        if Variable.check_grammar(expr):
+            # "base case" 1: expr is a valid Variable
+            return Variable(expr)
+        elif Abstraction.check_grammar(expr):
+            # "base case" 2: expr is a valid Abstraction
+            return Abstraction(expr)
+        elif Application.check_grammar(expr):
+            # "base case" 3: expr is valid Application
+            return Application(expr)
         else:
-            for token in LambdaAST.tokenize(expr):
-                self.generate_tree(token)
+            # "recursion" otherwise
+            return LambdaAST.step_tokenize(expr)
 
     def beta_reduce(self):
         raise NotImplementedError()
@@ -173,4 +181,5 @@ class LambdaAST:
         return self.__repr__()
 
 
-if __name__ == "__main__": ...
+if __name__ == "__main__":
+    print(LambdaAST("((λx.x) λx.x) (λxy.y λabc.a) λxy.y"))

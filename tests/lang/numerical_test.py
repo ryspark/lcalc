@@ -1,7 +1,7 @@
 import unittest
 
 from interpreter.lang import numerical
-from interpreter.pure.lexical import LambdaExpr
+from interpreter.pure.lexical import Abstraction
 
 class NumericalTestCase(unittest.TestCase):
 
@@ -12,7 +12,7 @@ class NumericalTestCase(unittest.TestCase):
 
         should_pass = {0: "λf.λx.x", 3: "λf.λx.f (f (f (x)))"}
         for case, result in should_pass.items():
-            self.assertEqual(LambdaExpr(result), numerical.to_church_numeral(case))
+            self.assertEqual(Abstraction(result), numerical.to_church_numeral(case))
 
 
 if __name__ == '__main__':
