@@ -1,6 +1,36 @@
 import unittest
 
-from interpreter.pure.lexical import Abstraction, Application, Invariate, Variable
+from interpreter.pure.lexical import *
+
+class LambdaTermTestCase(unittest.TestCase):
+
+    def test_infer_type(self):
+        should_fail = ["aλ", "(())", "(λλa.a)", "(λ)", "((λx.x)) x) y"]
+        for case in should_fail:
+            print(LambdaTerm.infer_type(case))
+            self.assertRaises(ValueError, LambdaTerm.infer_type, case)
+
+        cases = {
+            "λ": Builtin("λ"),
+            "a": Variable("a"),
+            "λx.(x y z)": Abstraction("λx.(x y z)"),
+            "(λx.x) a": Application("(λx.x) a"),
+        }
+        for case, expected in cases.items():
+            self.assertEqual(expected, LambdaTerm.infer_type(case), case)
+
+
+class BuiltinsTestCase(unittest.TestCase):
+
+    def test_check_grammar(self):
+        should_fail = ["λa", "awef", "()", ".ew"]
+        for case in should_fail:
+            self.assertFalse(Builtin.check_grammar(case), case)
+
+        should_pass = ["λ", ".", "(", ")"]
+        for case in should_pass:
+            self.assertTrue(Builtin.check_grammar(case), case)
+
 
 class VariableTestCase(unittest.TestCase):
 
@@ -26,9 +56,9 @@ class AbstractionTestCase(unittest.TestCase):
 
     def test_step_tokenize(self):
         cases = {
-            "λx.λy.λz.x (y z)": [Invariate("λ"), Variable("x"), Invariate("."), Abstraction("λy.λz.x (y z)")],
-            "λy.λz.x (y z)": [Invariate("λ"), Variable("y"), Invariate("."), Abstraction("λz.x (y z)")],
-            "λz.x(y z)": [Invariate("λ"), Variable("z"), Invariate("."), Application("x(y z)")]
+            "λx.λy.λz.x (y z)": [Builtin("λ"), Variable("x"), Builtin("."), Abstraction("λy.λz.x (y z)")],
+            "λy.λz.x (y z)": [Builtin("λ"), Variable("y"), Builtin("."), Abstraction("λz.x (y z)")],
+            "λz.x(y z)": [Builtin("λ"), Variable("z"), Builtin("."), Application("x(y z)")]
         }
 
         for case, expected in cases.items():
@@ -38,7 +68,7 @@ class AbstractionTestCase(unittest.TestCase):
 class ApplicationTestCase(unittest.TestCase):
 
     def test_check_grammar(self):
-        should_fail = ["xxy", "λx.(λx", "λx.x", "x", "(λx.x))", ")λx.x(", "(λx.λy.(x y z)))((z)λx.x(y))"]
+        should_fail = ["xxy", "λx.(λx", "λx.x", "x", "(λx.x))", ")λx.x(", "(λx.λy.(x y z)))((z)λx.x(y))", "aefλ.", "λ."]
         for case in should_fail:
             self.assertFalse(Application.check_grammar(case), case)
 
