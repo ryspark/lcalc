@@ -76,7 +76,9 @@ class AbstractionTestCase(unittest.TestCase):
         }
 
         for case, expected in cases.items():
-            self.assertEqual(expected, Abstraction(case).step_tokenize(), case)
+            abstraction = Abstraction(case)
+            abstraction.step_tokenize()
+            self.assertEqual(expected, abstraction.nodes, case)
 
 
 class ApplicationTestCase(unittest.TestCase):
@@ -100,9 +102,9 @@ class ApplicationTestCase(unittest.TestCase):
             self.assertRaises(SyntaxError, Application(case).step_tokenize)
 
         cases = {
-            "x y": [Variable("x"), Abstraction("y")],
-            "(x) y": [Variable("x"), Abstraction("y")],
-            "x (y)": [Variable("x"), Abstraction("y")],
+            "x y": [Variable("x"), Variable("y")],
+            "(x) y": [Variable("x"), Variable("y")],
+            "x (y)": [Variable("x"), Variable("y")],
             "x(λx.y)": [Variable("x"), Abstraction("λx.y")],
             "x λx.y": [Variable("x"), Abstraction("λx.y")],
             "(x y) y (x y)": [Application("x y"), Variable("y"), Application("x y")],
@@ -116,11 +118,14 @@ class ApplicationTestCase(unittest.TestCase):
             "((λx.x) λx.x)λx.(λxy.y x)": [Application("(λx.x) λx.x"), Abstraction("λx.(λxy.y x)")],
             "((λx.x) λx.x) λx. (λxy.y x)": [Application("(λx.x) λx.x"), Abstraction("λx. (λxy.y x)")],
             "((λx.x) λx.x) λx.(λxy.y x)": [Application("(λx.x) λx.x"), Abstraction("λx.(λxy.y x)")],
-            "((λx.x) λx.x)λx. (λxy.y x)": [Application("(λx.x) λx.x"), Abstraction("λx.(λxy.y x)")],
+            "((λx.x) λx.x)λx.(λxy.y x (λxy.y x))": [Application("(λx.x) λx.x"), Abstraction("λx.(λxy.y x (λxy.y x))")],
+            "((λx.x) λx.x)λx. (λxy.y x)λx.(x)": [Application("(λx.x) λx.x"), Abstraction("λx. (λxy.y x)λx.(x)")],
         }
 
         for case, expected in cases.items():
-            self.assertEqual(expected, Application(case).step_tokenize(), case)
+            application = Application(case)
+            application.step_tokenize()
+            self.assertEqual(expected, application.nodes, case)
 
 
 if __name__ == '__main__':
