@@ -41,12 +41,20 @@ class Grammar(abc.ABC):
 
     @staticmethod
     @abc.abstractmethod
+    def tokenizable():
+        """Whether or not this Grammar object is tokenizable. Could make everything work without this method, but
+        felt that it was more explicit (and therefore worth the few extra lines of code) to have a node.tokenizable()
+        call in LambdaAST.generate_tree."""
+
+    @staticmethod
+    @abc.abstractmethod
     def check_grammar(expr):
         """"This method should check expr's top-level grammar and return whether or not it is valid. It should also
         raise a SyntaxError if expr's top-level grammar is similar to the accepted grammar but syntactically invalid."""
 
     @staticmethod
     def are_parens_balanced(expr):
+        """Checks if parenthese are balanced within expr."""
         parens_balance = 0
         for idx, char in enumerate(expr):
             if parens_balance < 0:
@@ -75,13 +83,23 @@ class Grammar(abc.ABC):
             return original_expr
         return Grammar.preprocess(expr, strip_parens)
 
-    def display(self, indents=0):
-        nodes = "{}{}(expr='{}'".format("    " * (indents if indents <= 1 else indents // 2), self._cls, self.expr)
+    def display(self, _indents=0):
+        """Recursively displays Grammar tree with readable format.
+
+        Format:
+        <Grammar>(expr='<expr>', nodes=[
+            <Grammar>(expr='<expr>', nodes=[
+                ...
+                <Grammar>(expr='<expr>')  # <-- if nodes is empty
+            ])
+        ])
+        """
+        nodes = "{}{}(expr='{}'".format("    " * (_indents if _indents <= 1 else _indents // 2), self._cls, self.expr)
         if self.nodes:
             nodes += ", nodes=["
             for node in self.nodes:
-                nodes += "\n{}".format("    " * indents) + node.display(indents + 1) + ","
-            nodes += "\n{}]".format("    " * indents)
+                nodes += "\n{}".format("    " * _indents) + node.display(_indents + 1) + ","
+            nodes += "\n{}]".format("    " * _indents)
 
         return nodes + ")"
 
@@ -97,8 +115,11 @@ class Grammar(abc.ABC):
 
 class Builtin(Grammar):
     """Built-in lambda calculus tokens: 'λ', '.', '(', and ')'. """
-
     TOKENS = ("λ", ".", "(", ")")
+
+    @staticmethod
+    def tokenizable():
+        return False
 
     @staticmethod
     def check_grammar(expr):
@@ -137,6 +158,10 @@ class Variable(LambdaTerm):
     """Variable in lambda calculus: alphabetic character(s) that represent abstractions."""
 
     @staticmethod
+    def tokenizable():
+        return False
+
+    @staticmethod
     def check_grammar(expr):
         """Variable format: <alpha> (alphabetic character(s))"""
         return Grammar.preprocess(expr).isalpha() and "λ" not in expr
@@ -148,6 +173,10 @@ class Variable(LambdaTerm):
 
 class Abstraction(LambdaTerm):
     """Abstraction: the basic datatype in lambda calculus."""
+
+    @staticmethod
+    def tokenizable():
+        return True
 
     @staticmethod
     def get_bound_var(expr):
@@ -204,6 +233,10 @@ class Abstraction(LambdaTerm):
 
 class Application(LambdaTerm):
     """Application of arbitrary number of Abstractions/Variables."""
+
+    @staticmethod
+    def tokenizable():
+        return True
 
     @staticmethod
     def check_grammar(expr):
@@ -317,7 +350,7 @@ class LambdaAST:
 
     @staticmethod
     def generate_tree(node):
-        if not isinstance(node, Variable) and not isinstance(node, Builtin):
+        if node.tokenizable():
             node.step_tokenize()
             for sub_node in node.nodes:
                 LambdaAST.generate_tree(sub_node)
