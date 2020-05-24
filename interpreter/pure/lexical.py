@@ -19,7 +19,7 @@ Sources: https://plato.stanford.edu/entries/lambda-calculus/#Com
 ------------------------------------------------------------------------------------------------------------------------
 
 (*) Why is currying not supported? Because it makes the use of multi-character Variable ambiguous. For example, if
-currying is allowed, what does the expression `λint.x` mean? Should it be resolved to `λi.λn.λt.x`, or is `int` a
+currying is allowed, what does the expression `λvar.x` mean? Should it be resolved to `λv.λa.λr.x`, or is `var` a
 Variable name? Thus, currying and multi-character Variable cannot coexist without causing ambiguity. This
 implementation favors multi-character LambdaVars over currying, a purely arbitrary decision. Relatedly, this feature
 means that function application must be separated by spaces or parentheses.
@@ -94,14 +94,16 @@ class Grammar(abc.ABC):
             ])
         ])
         """
-        nodes = "{}{}(expr='{}'".format("    " * (_indents if _indents <= 1 else _indents // 2), self._cls, self.expr)
-        if self.nodes:
-            nodes += ", nodes=["
-            for node in self.nodes:
-                nodes += "\n{}".format("    " * _indents) + node.display(_indents + 1) + ","
-            nodes += "\n{}]".format("    " * _indents)
+        indent = "    "
 
-        return nodes + ")"
+        result = "{}{}(expr='{}'".format(indent * (_indents if _indents < 2 else _indents // 2), self._cls, self.expr)
+        if self.nodes:
+            result += ", nodes=["
+            for node in self.nodes:
+                result += "\n{}".format(indent * _indents) + node.display(_indents + 1) + ","
+            result += "\n{}]".format(indent * _indents)
+
+        return result + ")"
 
     def __str__(self):
         return self.__repr__()
@@ -192,7 +194,7 @@ class Abstraction(LambdaTerm):
     def check_grammar(expr):
         """This implementation of Abstraction differs from the actual lambda calculus definition.
         - Actual Abstraction format: "λ" <Variable> "." <LambdaTerm> (optional parentheses not shown)
-        - Accepted Abstraction format: "λ" <Variable> "." <[^Builtin*]> (optional parentheses not shown)
+        - Accepted Abstraction format: "λ" <Variable> "." <anything> (optional parentheses not shown)
 
         The reason for this discrepancy is to delegate recursive token parsing to LambdaAST.
         """
@@ -269,7 +271,7 @@ class Application(LambdaTerm):
 
         for idx, char in enumerate(padded_expr):
             if char == "λ" and open_pos is None:
-                # if "λ" is found and within nested parens, mark start of λ-term
+                # if "λ" is found and within nested parens, mark start of abstraction
                 bind_positions.append(idx)
                 bind_parens.append(0)
 
@@ -316,7 +318,7 @@ class Application(LambdaTerm):
             elif char.isspace() and (not bind_positions or idx == len(padded_expr) - 1):
                 if bind_positions:
                     # if bind_positions, idx must be at the end of padded_expr
-                    # therefore, if there are any unclosed abstractions, add them to spli
+                    # therefore, if there are any unclosed abstractions, add them to split
                     space_pos = bind_positions[0]
                 if space_pos is not None:
                     # grab chunk in between this space and last one if previous space has been set
