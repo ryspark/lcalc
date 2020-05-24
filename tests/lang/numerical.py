@@ -10,9 +10,9 @@ class NumericalTestCase(unittest.TestCase):
         for case in should_fail:
             self.assertRaises(AssertionError, numerical.to_church_numeral, number=case)
 
-        should_pass = {0: "λf.λx.x", 3: "λf.λx.f (f (f (x)))"}
+        should_pass = {0: Abstraction("λf.λx.x"), 3: Abstraction("λf.λx.f (f (f (x)))")}
         for case, result in should_pass.items():
-            self.assertEqual(Abstraction(result), numerical.to_church_numeral(case))
+            self.assertEqual(result, numerical.to_church_numeral(case))
 
 
 if __name__ == '__main__':
