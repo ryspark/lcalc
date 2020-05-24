@@ -1,6 +1,22 @@
 import unittest
 
-from interpreter.pure.lexical import Abstraction, Builtin, Application, LambdaTerm, Variable
+from interpreter.pure.lexical import Abstraction, Builtin, Application, LambdaAST, LambdaTerm, Variable
+
+class BuiltinTestCase(unittest.TestCase):
+
+    def test_check_grammar(self):
+        should_raise = ["λ.", "()", ".("]
+        for case in should_raise:
+            self.assertRaises(SyntaxError, Builtin.check_grammar, case)
+
+        should_fail = ["awef", "λx.x", "(a) (b)", "((a) (b))"]
+        for case in should_fail:
+            self.assertFalse(Builtin.check_grammar(case), case)
+
+        should_pass = ["λ", ".", "(", ")"]
+        for case in should_pass:
+            self.assertTrue(Builtin.check_grammar(case), case)
+
 
 class LambdaTermTestCase(unittest.TestCase):
 
@@ -18,22 +34,6 @@ class LambdaTermTestCase(unittest.TestCase):
         }
         for case, expected in cases.items():
             self.assertEqual(expected, LambdaTerm.infer_type(case), case)
-
-
-class BuiltinTestCase(unittest.TestCase):
-
-    def test_check_grammar(self):
-        should_raise = ["λ.", "()", ".("]
-        for case in should_raise:
-            self.assertRaises(SyntaxError, Builtin.check_grammar, case)
-
-        should_fail = ["awef", "λx.x", "(a) (b)", "((a) (b))"]
-        for case in should_fail:
-            self.assertFalse(Builtin.check_grammar(case), case)
-
-        should_pass = ["λ", ".", "(", ")"]
-        for case in should_pass:
-            self.assertTrue(Builtin.check_grammar(case), case)
 
 
 class VariableTestCase(unittest.TestCase):
@@ -68,11 +68,11 @@ class AbstractionTestCase(unittest.TestCase):
 
     def test_step_tokenize(self):
         cases = {
-            "λx.λy.λz.x (y z)": [Builtin("λ"), Variable("x"), Builtin("."), Abstraction("λy.λz.x (y z)")],
-            "λy.λz.x (y z)": [Builtin("λ"), Variable("y"), Builtin("."), Abstraction("λz.x (y z)")],
-            "λz.x(y z)": [Builtin("λ"), Variable("z"), Builtin("."), Application("x(y z)")],
-            "λxy.y λabc.a": [Builtin("λ"), Variable("xy"), Builtin("."), Application("y λabc.a")],
-            "λxy.a λab.a(f)(e)xy": [Builtin("λ"), Variable("xy"), Builtin("."), Application("a λab.a(f)(e)xy")]
+            "λx.λy.λz.x (y z)": [Variable("x"), Abstraction("λy.λz.x (y z)")],
+            "λy.λz.x (y z)": [Variable("y"), Abstraction("λz.x (y z)")],
+            "λz.x(y z)": [Variable("z"), Application("x(y z)")],
+            "λxy.y λabc.a": [Variable("xy"), Application("y λabc.a")],
+            "λxy.a λab.a(f)(e)xy": [Variable("xy"), Application("a λab.a(f)(e)xy")]
         }
 
         for case, expected in cases.items():
@@ -126,6 +126,15 @@ class ApplicationTestCase(unittest.TestCase):
             application = Application(case)
             application.step_tokenize()
             self.assertEqual(expected, application.nodes, case)
+
+
+class LambdaASTTestCase(unittest.TestCase):
+
+    def test_left_outer_redex(self):
+        # NOTE: also implicitly tests generate_tree
+        should_fail = [LambdaAST("λx.x"), LambdaAST("(x y)")]
+        for case in should_fail:
+            self.assertIsNone(case.left_outer_redex(), case)
 
 
 if __name__ == '__main__':

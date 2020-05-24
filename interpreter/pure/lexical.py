@@ -102,17 +102,11 @@ class Grammar(abc.ABC):
             result += ", nodes=["
             for node in self.nodes:
                 result += "\n" + node.display(indents + 1) + ","
-            result += "\n{}]".format("    " * indents)
+            result = result[:-1] + "\n{}]".format("    " * indents)
         return result + ")"
-
-    def __str__(self):
-        return self.__repr__()
 
     def __repr__(self):
         return "{}('{}')".format(self._cls, self.expr)
-
-    def __eq__(self, other):
-        return hasattr(other, "expr") and self.expr == other.expr
 
 
 class Builtin(Grammar):
@@ -152,6 +146,16 @@ class LambdaTerm(Grammar):
             if subclass.check_grammar(expr):
                 return subclass(expr)
         raise SyntaxError("'{}' not valid LambdaTerm grammar".format(expr))
+
+    def get_child(self, which):
+        """Gets left or right child of a LambdaTerm. Note that all tokenizable LambdaTerms tokenize to two nodes; that
+        is, the syntax tree for any valid lambda calculus expr is binary."""
+        if self.nodes:
+            if len(self.nodes) != 2:
+                raise ValueError("[internal]: '{}' not tokenized to binary tree".format(self))
+            if which not in ("left", "right"):
+                raise ValueError("[internal]: expected 'left' or 'right', got '{}'".format(which))
+            return self.nodes[0] if which == "left" else self.nodes[1]
 
 
 class Variable(LambdaTerm):
@@ -228,7 +232,7 @@ class Abstraction(LambdaTerm):
         bound_var = Variable(self.get_bound_var(self.expr))
         body = LambdaTerm.infer_type(self.get_body(self.expr))
 
-        self.nodes = [Builtin("λ"), bound_var, Builtin("."), body]
+        self.nodes = [bound_var, body]
 
 
 class Application(LambdaTerm):
@@ -346,14 +350,35 @@ class LambdaAST:
 
     @staticmethod
     def generate_tree(node):
-        """In-place recursive generation of syntax tree from a single LambdaTerm object."""
+        """In-place recursive generation of syntax tree from a single LambdaTerm object. No unit test for this method,
+        mostly because it's annoying to write one. However, assuming step_tokenize and tokenizable work, the only part
+        of this method that could possibly go wrong is the recursion, so no need for a test here."""
         if node.tokenizable():
             node.step_tokenize()
             for sub_node in node.nodes:
                 LambdaAST.generate_tree(sub_node)
 
+    def left_outer_redex(self, tree=None):
+        """Returns the leftmost outermost redex, if there is one. The first outermost node is returned without checking
+        if it is leftmost, but the recursive call stack should ensure that the first outermost == leftmost."""
+        if tree is None:
+            tree = self.tree
+        if tree.tokenizable():
+            for tree in tree.nodes:
+                if isinstance(tree.get_child("left"), Abstraction):
+                    return tree
+                elif not tree.tokenizable():
+                    break
+            else:
+                return [LambdaAST.left_outer_redex(node) for node in tree]
+
     def __repr__(self):
-        return self.tree.__repr__()
+        return repr(self.tree)
 
     def __str__(self):
         return self.tree.display()
+
+
+if __name__ == "__main__":
+    syntax_tree = LambdaAST("(λz.((λy.z (v y)) λy.(y v)) λv.z)")
+    print(syntax_tree)
