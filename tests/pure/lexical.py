@@ -1,6 +1,6 @@
 import unittest
 
-from interpreter.pure.lexical import *
+from interpreter.pure.lexical import Abstraction, Builtin, Application, LambdaTerm, Variable
 
 class LambdaTermTestCase(unittest.TestCase):
 

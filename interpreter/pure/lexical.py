@@ -56,7 +56,7 @@ class Grammar(abc.ABC):
     def are_parens_balanced(expr):
         """Checks if parenthese are balanced within expr."""
         parens_balance = 0
-        for idx, char in enumerate(expr):
+        for char in expr:
             if parens_balance < 0:
                 break
             elif char == "(":
@@ -352,6 +352,7 @@ class LambdaAST:
 
     @staticmethod
     def generate_tree(node):
+        """In-place recursive generation of syntax tree from a single LambdaTerm object."""
         if node.tokenizable():
             node.step_tokenize()
             for sub_node in node.nodes:
