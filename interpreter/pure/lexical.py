@@ -14,7 +14,10 @@ Formally, pure lambda calculus can be defined as
 
 Note that applications and abstractions are the only non-terminals in lambda calculus.
 
-Sources: https://plato.stanford.edu/entries/lambda-calculus/#Com
+Sources: https://plato.stanford.edu/entries/lambda-calculus/#Com,
+         https://opendsa-server.cs.vt.edu/ODSA/Books/PL/html/Syntax.html,
+         https://opendsa-server.cs.vt.edu/ODSA/Books/PL/html/ReductionStrategies.html,
+         http://pages.cs.wisc.edu/~horwitz/CS704-NOTES/1.LAMBDA-CALCULUS.html#NOR
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -66,7 +69,7 @@ class Grammar(abc.ABC):
         return parens_balance == 0
 
     @staticmethod
-    def preprocess(original_expr, strip_parens=True):
+    def preprocess(original_expr):
         """Strips surrounding whitespace and outer parentheses (if any) from expr."""
         if not original_expr:
             raise SyntaxError("Lambda term cannot be empty")
@@ -76,14 +79,14 @@ class Grammar(abc.ABC):
                 raise SyntaxError("'{}' contains illegal character {}".format(original_expr, char))
 
         expr = original_expr.lstrip().rstrip()
-        if strip_parens and expr[0] + expr[-1] == "()" and Grammar.are_parens_balanced(expr[1:-1]):
+        if expr[0] + expr[-1] == "()" and Grammar.are_parens_balanced(expr[1:-1]):
             expr = expr[1:-1]
 
         if original_expr == expr:
             return original_expr
-        return Grammar.preprocess(expr, strip_parens)
+        return Grammar.preprocess(expr)
 
-    def display(self, _indents=0):
+    def display(self, indents=0):
         """Recursively displays Grammar tree with readable format.
 
         Format:
@@ -94,15 +97,12 @@ class Grammar(abc.ABC):
             ])
         ])
         """
-        indent = "    "
-
-        result = "{}{}(expr='{}'".format(indent * (_indents if _indents < 2 else _indents // 2), self._cls, self.expr)
+        result = "{}{}(expr='{}'".format("    " * indents, self._cls, self.expr)
         if self.nodes:
             result += ", nodes=["
             for node in self.nodes:
-                result += "\n{}".format(indent * _indents) + node.display(_indents + 1) + ","
-            result += "\n{}]".format(indent * _indents)
-
+                result += "\n" + node.display(indents + 1) + ","
+            result += "\n{}]".format("    " * indents)
         return result + ")"
 
     def __str__(self):
@@ -142,8 +142,6 @@ class LambdaTerm(Grammar):
 
         Examples: "(x y) (λx.λy.λz.x (y z))" -> [Application("x y"), Abstraction("λx.λy.λz.x (y z)")]
                   "λx.λy.λz.x (y z)" -> [Variable("x"), Abstraction("λy.λz.x (y z)")]
-
-        Source: https://opendsa-server.cs.vt.edu/ODSA/Books/PL/html/Syntax.html
         """
 
     @staticmethod
@@ -339,11 +337,7 @@ class Application(LambdaTerm):
 
 
 class LambdaAST:
-    """Implements a syntax tree builder as well as normal-order beta reduction of that syntax tree.
-
-    Sources: https://opendsa-server.cs.vt.edu/ODSA/Books/PL/html/Syntax.html,
-             https://opendsa-server.cs.vt.edu/ODSA/Books/PL/html/ReductionStrategies.html
-    """
+    """Implements a syntax tree builder as well as normal-order beta reduction of that syntax tree."""
 
     def __init__(self, expr):
         self.expr = expr
