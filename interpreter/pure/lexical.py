@@ -16,7 +16,6 @@ Note that applications and abstractions are the only non-terminals in lambda cal
 
 Sources: https://plato.stanford.edu/entries/lambda-calculus/#Com,
          https://opendsa-server.cs.vt.edu/ODSA/Books/PL/html/Syntax.html,
-         https://opendsa-server.cs.vt.edu/ODSA/Books/PL/html/ReductionStrategies.html,
          http://pages.cs.wisc.edu/~horwitz/CS704-NOTES/1.LAMBDA-CALCULUS.html#NOR
 
 ------------------------------------------------------------------------------------------------------------------------
@@ -41,13 +40,6 @@ class Grammar(abc.ABC):
 
         if check and not self.check_grammar(self.expr):
             raise SyntaxError("'{}' not valid {} grammar".format(expr, self._cls))
-
-    @staticmethod
-    @abc.abstractmethod
-    def tokenizable():
-        """Whether or not this Grammar object is tokenizable. Could make everything work without this method, but
-        felt that it was more explicit (and therefore worth the few extra lines of code) to have a node.tokenizable()
-        call in LambdaAST.generate_tree."""
 
     @staticmethod
     @abc.abstractmethod
@@ -117,10 +109,6 @@ class Builtin(Grammar):
     TOKENS = ("λ", ".", "(", ")")
 
     @staticmethod
-    def tokenizable():
-        return False
-
-    @staticmethod
     def check_grammar(expr):
         if len(expr) == 1:
             return expr in Builtin.TOKENS
@@ -132,6 +120,13 @@ class Builtin(Grammar):
 class LambdaTerm(Grammar):
     """Represents a valid λ-term: variable, abstraction, or application."""
 
+    @staticmethod
+    @abc.abstractmethod
+    def tokenizable():
+        """Whether or not this  object is tokenizable. Could make everything work without this method, but felt that it
+        was more explicit (and therefore worth the few extra lines of code) to have a node.tokenizable() call in
+        LambdaAST.generate_tree."""
+
     @abc.abstractmethod
     def step_tokenize(self):
         """This method should tokenize a LambdaTerm only one level down. Assumes top-level grammar has been checked,
@@ -140,6 +135,11 @@ class LambdaTerm(Grammar):
         Examples: "(x y) (λx.λy.λz.x (y z))" -> [Application("x y"), Abstraction("λx.λy.λz.x (y z)")]
                   "λx.λy.λz.x (y z)" -> [Variable("x"), Abstraction("λy.λz.x (y z)")]
         """
+
+    @abc.abstractmethod
+    def is_leftmost(self):
+        """Returns whether or not this object is a leftmost node in a syntax tree. Will only work if step_tokenize has
+        been run."""
 
     @staticmethod
     def infer_type(expr):
@@ -151,10 +151,10 @@ class LambdaTerm(Grammar):
         raise SyntaxError("'{}' not valid LambdaTerm grammar".format(expr))
 
     def get_child(self, which):
-        """Gets left or right child of a LambdaTerm. Note that all tokenizable LambdaTerms tokenize to two nodes; that
-        is, the syntax tree for any valid lambda calculus expr is binary."""
+        """Gets left or right child of a LambdaTerm. Note that all tokenizable LambdaTerms tokenize to two nodes,
+        except for Applications."""
         if self.nodes:
-            if len(self.nodes) != 2:
+            if len(self.nodes) != 2 and not isinstance(self, Application):
                 raise ValueError("[internal]: '{}' not tokenized to binary tree".format(self))
             if which not in ("left", "right"):
                 raise ValueError("[internal]: expected 'left' or 'right', got '{}'".format(which))
@@ -174,8 +174,10 @@ class Variable(LambdaTerm):
         return Grammar.preprocess(expr).isalpha() and "λ" not in expr
 
     def step_tokenize(self):
-        """Variables cannot be tokenized, so this method raises a TypeError."""
         raise TypeError("Variable object is not tokenizable")
+
+    def is_leftmost(self):
+        return False
 
 
 class Abstraction(LambdaTerm):
@@ -236,6 +238,9 @@ class Abstraction(LambdaTerm):
         body = LambdaTerm.infer_type(self.get_body(self.expr))
 
         self.nodes = [bound_var, body]
+
+    def is_leftmost(self):
+        return False
 
 
 class Application(LambdaTerm):
@@ -342,6 +347,11 @@ class Application(LambdaTerm):
             elif chunk != "":
                 self.nodes.append(LambdaTerm.infer_type(chunk))
 
+    def is_leftmost(self):
+        """Applications are the only LambdaTerm that can be leftmost. An Application is leftmost if its left child is an
+        Abstraction."""
+        return isinstance(self.get_child("left"), Abstraction) and len(self.nodes) == 2
+
 
 class LambdaAST:
     """Implements a syntax tree builder as well as normal-order beta reduction of that syntax tree."""
@@ -361,19 +371,23 @@ class LambdaAST:
             for sub_node in node.nodes:
                 LambdaAST.generate_tree(sub_node)
 
-    def left_outer_redex(self, tree=None):
+    def left_outer_redex(self):
         """Returns the leftmost outermost redex, if there is one. The first outermost node is returned without checking
-        if it is leftmost, but the recursive call stack should ensure that the first outermost == leftmost."""
-        if tree is None:
-            tree = self.tree
-        if tree.tokenizable():
-            for tree in tree.nodes:
-                if isinstance(tree.get_child("left"), Abstraction):
-                    return tree
-                elif not tree.tokenizable():
-                    break
+        if it is leftmost, but generally first outermost node == leftmost outermost node."""
+
+        def outer_redex(tree, candidates):
+            if tree.is_leftmost():
+                candidates.append(tree)
             else:
-                return [LambdaAST.left_outer_redex(node) for node in tree]
+                candidates.extend(outer_redex(node, candidates) for node in tree.nodes)
+
+        candidates = []
+        outer_redex(self.tree, candidates)
+
+        try:
+            return next(filter(lambda node: node, candidates))
+        except StopIteration:
+            return None
 
     def __repr__(self):
         return repr(self.tree)
@@ -383,5 +397,13 @@ class LambdaAST:
 
 
 if __name__ == "__main__":
-    syntax_tree = LambdaAST("(λz.((λy.z (v y)) λy.(y v)) λv.z)")
-    print(syntax_tree)
+    import time
+    times = []
+
+    for _ in range(100):
+        start = time.time()
+        syntax_tree = LambdaAST("(λz.((λy.z (v y)) λy.(y v)) λv.z)")
+        syntax_tree.left_outer_redex()
+        times.append(time.time() - start)
+
+    print(sum(times) / len(times))

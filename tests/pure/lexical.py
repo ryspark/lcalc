@@ -119,9 +119,8 @@ class ApplicationTestCase(unittest.TestCase):
             "((λx.x) λx.x) λx. (λxy.y x)": [Application("(λx.x) λx.x"), Abstraction("λx. (λxy.y x)")],
             "((λx.x) λx.x) λx.(λxy.y x)": [Application("(λx.x) λx.x"), Abstraction("λx.(λxy.y x)")],
             "((λx.x) λx.x)λx.(λxy.y x (λxy.y x))": [Application("(λx.x) λx.x"), Abstraction("λx.(λxy.y x (λxy.y x))")],
-            "((λx.x) λx.x)λx. (λxy.y x)λx.(x)": [Application("(λx.x) λx.x"), Abstraction("λx. (λxy.y x)λx.(x)")],
+            "((λx.x) λx.x)λx. (λxy.y x)λx.(x)": [Application("(λx.x) λx.x"), Application("λx. (λxy.y x)λx.(x)")],
         }
-
         for case, expected in cases.items():
             application = Application(case)
             application.step_tokenize()
@@ -132,9 +131,19 @@ class LambdaASTTestCase(unittest.TestCase):
 
     def test_left_outer_redex(self):
         # NOTE: also implicitly tests generate_tree
-        should_fail = [LambdaAST("λx.x"), LambdaAST("(x y)")]
+        should_fail = [LambdaAST("λx.x"), LambdaAST("(x y)"), LambdaAST("x ((x y)) λx.x"), LambdaAST("x (λx.x)")]
         for case in should_fail:
             self.assertIsNone(case.left_outer_redex(), case)
+
+        should_pass = {
+            LambdaAST("(λz.((λy.z (v y)) λy.(y v)) λv.z)"): Application("(λy.z (v y)) λy.(y v)"),
+            LambdaAST("(y ((λv.λu.z (λu.u (y y))) λy.y))"): Application("((λv.λu.z (λu.u (y y))) λy.y)"),
+            LambdaAST("(λv.(λz.z (v λv.v)) λv.y)"): Application("(λz.z (v λv.v)) λv.y"),
+            LambdaAST("((λx.λv.v (λu.(v u) λz.λu.y)) v)"): Application("(λx.λv.v (λu.(v u) λz.λu.y)) v"),
+            LambdaAST("(λz.(λz.y (y z)) (λv.v x))"): Application("(λz.y (y z)) (λv.v x)")
+        }
+        for case, result in should_pass.items():
+            self.assertEqual(result, case.left_outer_redex(), case)
 
 
 if __name__ == '__main__':
