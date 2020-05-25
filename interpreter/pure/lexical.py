@@ -108,6 +108,9 @@ class Grammar(abc.ABC):
     def __repr__(self):
         return "{}('{}')".format(self._cls, self.expr)
 
+    def __eq__(self, other):
+        return hasattr(other, "expr") and self.expr == other.expr
+
 
 class Builtin(Grammar):
     """Built-in lambda calculus tokens: 'λ', '.', '(', and ')'. """
