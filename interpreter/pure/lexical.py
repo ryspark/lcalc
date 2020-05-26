@@ -125,10 +125,12 @@ class LambdaTerm(Grammar):
     @abc.abstractmethod
     def step_tokenize(self):
         """This method should tokenize a LambdaTerm only one level down. Assumes top-level grammar has been checked,
-        but raises an error if second-level grammar is not valid. Should set self.nodes attribute.
+        but raises an error if second-level grammar is not valid. Should set self.nodes attribute, and will always
+        generate two nodes (lambda calculus ASTs are binary), even for Applications.
 
         Examples: "(x y) (λx.λy.λz.x (y z))" -> [Application("x y"), Abstraction("λx.λy.λz.x (y z)")]
                   "λx.λy.λz.x (y z)" -> [Variable("x"), Abstraction("λy.λz.x (y z)")]
+                  "(λx.x) (λx.x) (λx.x)" -> [Application("λx.x"), Application("(λx.x) (λx.x)")]
         """
 
     @abc.abstractmethod
@@ -148,9 +150,18 @@ class LambdaTerm(Grammar):
         """Whether or not this object is a leftmost node in a syntax tree. Will only work if step_tokenize has been
         run."""
 
+    def get_child(self, which):
+        """Gets left or right child of LambdaTerm. Note that this method can only be called when step_tokenize has
+        been called."""
+        if self.nodes:
+            assert which in ("left", "right"), "which must be 'left' or 'right', got {}".format(which)
+            return self.nodes[0] if which == "left" else self.nodes[1]
+
     @staticmethod
     def infer_type(expr):
         """Converts expr to the proper LambdaTerm type, raises SyntaxError if expr is not a valid LambdaType."""
+        if not isinstance(expr, str):
+            expr = "".join(char for char in expr)
         for cls in LambdaTerm.__subclasses__():
             subclass = globals()[cls.__name__]
             if subclass.check_grammar(expr):
@@ -284,90 +295,26 @@ class Application(LambdaTerm):
         return not is_builtin and not is_other_lambdaterm
 
     def step_tokenize(self):
-        padded_expr = " " + self.expr + " "
+        left_child = []
+        start_right_child = None
 
-        split = []                            # chunks of self.expr
-        open_pos, extras = None, 0            # for splitting by parentheses
-        space_pos = None                      # for splitting by spaces
-        bind_positions, bind_parens = [], []  # for making sure that abstractions are greedy
+        for idx, char in enumerate(self.expr):
+            not_in_nested = self.expr.count("(", 0, idx) == self.expr.count(")", 0, idx)
 
-        for idx, char in enumerate(padded_expr):
-            previous_char = padded_expr[idx - 1] if idx > 0 else None
+            if idx != 0 and not_in_nested:
+                start_right_child = idx
+                break
+            left_child.append(char)
 
-            if char == "λ" and open_pos is None:
-                # if "λ" is found and within nested parens, mark start of abstraction
-                bind_positions.append(idx)
-                bind_parens.append(0)
+        left_child += ")" * (left_child.count("(") - left_child.count(")"))
 
-                if previous_char not in Builtin.TOKENS:
-                    # so that xλ.x is illegal but (x)λx.x, λx.(λy.y), and λx.λy.y aren't
-                    raise SyntaxError("'{}' has illegal character before bind".format(self.expr))
+        right_child = self.expr[start_right_child:]
+        right_child = "(" * (right_child.count(")") - right_child.count(")")) + right_child
 
-            elif char == "." and open_pos is None:
-                # if within top-level parens...
-                if not bind_positions:
-                    # if no "λ" have been recorded but char == ".", raise SyntaxError
-                    raise SyntaxError("'{}' has declarator before bind".format(self.expr))
-                if not Variable.check_grammar(padded_expr[bind_positions[-1] + 1:idx]):
-                    # if chars between "." and last "λ" are not valid, raise SyntaxError
-                    raise SyntaxError("'{}' has an illegal bound variable".format(self.expr))
+        self.nodes = [LambdaTerm.infer_type(left_child), LambdaTerm.infer_type(right_child)]
 
-            elif char == "(":
-                if bind_positions:
-                    # if in abstraction, increment parens balance counter for that specific abstraction
-                    bind_parens[-1] += 1
-                elif open_pos is None:
-                    # if not within nested parens and not within an abstraction, set open_pos
-                    open_pos = idx + 1
-                    if space_pos:
-                        # needed if there is not a space in between open_paren and last LambdaTerm
-                        split.append(padded_expr[space_pos:idx])
-                else:
-                    # if in nested parens and not in abstraction, increment balance counter
-                    extras += 1
-                space_pos = None
-
-            elif char == ")":
-                if bind_positions and bind_parens[-1] == 0:
-                    # if exiting an abstraction, remove last_bind from bind_positions/bind_parens
-                    del bind_positions[-1]
-                    del bind_parens[-1]
-                if bind_positions:
-                    # if in abstraction, decrement that abstraction body balance counter
-                    bind_parens[-1] -= 1
-                elif open_pos is not None and extras == 0:
-                    # if not within nested parens and not within an abstraction body, add to split
-                    split.append(padded_expr[open_pos:idx])
-                    open_pos = None
-                else:
-                    # if within nested parens and not in abstraction body, decrement balance counter
-                    extras -= 1
-
-            elif previous_char == ")" and not char.isspace():
-                # if previous character is ')', mark this character as start of new expr
-                space_pos = idx
-
-            elif char.isspace() and (not bind_positions or idx == len(padded_expr) - 1):
-                if bind_positions:
-                    # if bind_positions, idx must be at the end of padded_expr
-                    # therefore, if there are any unclosed abstractions, add them to split
-                    space_pos = bind_positions[0]
-                if space_pos is not None:
-                    # grab chunk in between this space and last one if previous space has been set
-                    split.append(padded_expr[space_pos:idx])
-                if open_pos is None:
-                    # if not in nested parens, set space_pos
-                    space_pos = idx + 1
-
-            if extras < 0 or (bind_parens and bind_parens[-1] < 0):
-                raise SyntaxError("'{}' has mismatched parentheses".format(self.expr))
-
-        for chunk in split:
-            if chunk == self.expr:
-                # if self.expr tokenizes to itself, it is invalid (Applications are always tokenizable)
-                raise SyntaxError("'{}' not valid Application grammar".format(self.expr))
-            elif chunk != "":
-                self.nodes.append(LambdaTerm.infer_type(chunk))
+        if any(node.expr == self.expr for node in self.nodes):
+            raise SyntaxError("'{}' is not valid Application grammar".format(self.expr))
 
     def substitute(self, var, new_arg):
         """Application substitution is distributive: (A B)[x := M] = (A[x := M])(B[x := M])"""
@@ -383,7 +330,7 @@ class Application(LambdaTerm):
         """Applications are the only LambdaTerm that can be leftmost. An Application is leftmost if its left child is
         an Abstraction."""
         try:
-            return isinstance(self.nodes[0], Abstraction)
+            return isinstance(self.get_child("left"), Abstraction)
         except IndexError:
             raise ValueError("[internal] call step_tokenize before querying nodes")
 
