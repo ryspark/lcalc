@@ -101,12 +101,14 @@ class Grammar(abc.ABC):
         return "{}('{}')".format(self._cls, self.expr)
 
     def __eq__(self, other):
-        return hasattr(other, "expr") and self.expr == other.expr
+        if isinstance(other, Grammar):
+            return all(var == other_var for var, other_var in zip(vars(self), vars(other)))
+        return False
 
 
 class Builtin(Grammar):
-    """Built-in lambda calculus tokens: 'λ', '.', '(', and ')'. """
-    TOKENS = ["λ", ".", "(", ")"]
+    """Built-in lambda calculus tokens: 'λ', '.', '(', ')', ' '. """
+    TOKENS = ["λ", ".", "(", ")", " "]
 
     @staticmethod
     def check_grammar(expr):
@@ -128,10 +130,6 @@ class LambdaTerm(Grammar):
         Examples: "(x y) (λx.λy.λz.x (y z))" -> [Application("x y"), Abstraction("λx.λy.λz.x (y z)")]
                   "λx.λy.λz.x (y z)" -> [Variable("x"), Abstraction("λy.λz.x (y z)")]
         """
-
-    @abc.abstractmethod
-    def beta_reduce(self):
-        """Beta-reduces expr one level down. Requires that step_tokenize has been called."""
 
     @abc.abstractmethod
     def substitute(self, var, new_arg):
@@ -171,14 +169,10 @@ class Variable(LambdaTerm):
     def step_tokenize(self):
         raise TypeError("Variable object is not tokenizable")
 
-    def beta_reduce(self):
-        """Variables are beta-normal, so nothing to do here."""
-        raise TypeError("Variable already in beta-normal form")
-
     def substitute(self, var, new_arg):
         """Variable substitution follows two rules:
-        1. x[x := M] = M
-        2. y[x := M] = y, y != x
+        1. self.expr[var := new_arg] = new_arg, self.expr == var
+        2. self.expr[var := new_arg] = self.expr, self.expr != var
         """
         if self.expr == var:
             self.expr = new_arg
@@ -242,22 +236,19 @@ class Abstraction(LambdaTerm):
         return True
 
     def step_tokenize(self):
-        bound_var = Variable(self.get_bound_var(self.expr))
-        body = LambdaTerm.infer_type(self.get_body(self.expr))
+        bound_var = Variable(Abstraction.get_bound_var(self.expr))
+        body = LambdaTerm.infer_type(Abstraction.get_body(self.expr))
 
         self.nodes = [bound_var, body]
 
-    def beta_reduce(self):
-        """Abstractions are not reduced during normal-order beta reduction, only their bodies
-        are (if body is an Application)."""
-        raise TypeError("Abstraction does not implement beta-reduction in normal-order reduction")
-
     def substitute(self, var, new_arg):
         """Abstraction substitution follows two rules:
-        1. (λx.A)[x := M] = λx.A
-        2. (λy.A)[x := M] = λy.A[x := M], y != x
+        1. (λvar.body)[var := new_arg] = λvar.body
+        2. (λ!var.body)[var := new_arg] = (λ!var.body[var := new_arg])
         """
-        raise NotImplementedError()
+        bound_var, body = self.nodes
+        if var != bound_var:
+            body.substitute(var, new_arg)
 
     @property
     def tokenizable(self):
@@ -308,7 +299,7 @@ class Application(LambdaTerm):
                 bind_positions.append(idx)
                 bind_parens.append(0)
 
-                if previous_char not in Builtin.TOKENS + [" "]:
+                if previous_char not in Builtin.TOKENS:
                     # so that xλ.x is illegal but (x)λx.x, λx.(λy.y), and λx.λy.y aren't
                     raise SyntaxError("'{}' has illegal character before bind".format(self.expr))
 
@@ -378,15 +369,10 @@ class Application(LambdaTerm):
             elif chunk != "":
                 self.nodes.append(LambdaTerm.infer_type(chunk))
 
-    def beta_reduce(self):
-        reduced = self.nodes[0]
-        for term in self.nodes[1:]:
-            reduced = self.substitute(term, reduced)
-        return reduced
-
     def substitute(self, var, new_arg):
         """Application substitution is distributive: (A B)[x := M] = (A[x := M])(B[x := M])"""
-        raise NotImplementedError()
+        for node in self.nodes:
+            node.substitute(var, new_arg)
 
     @property
     def tokenizable(self):
