@@ -296,20 +296,16 @@ class Application(LambdaTerm):
 
     def step_tokenize(self):
         start_right_child = None
-        for idx, char in enumerate(self.expr):
-            if idx != 0 and self.expr.count("(", 0, idx) == self.expr.count(")", 0, idx):
+        for idx in range(1, len(self.expr)):
+            if self.expr.count("(", 0, idx) == self.expr.count(")", 0, idx):
                 start_right_child = idx
                 break
 
         left_child, right_child = self.expr[:start_right_child], self.expr[start_right_child:]
-
-        left_child += ")" * (left_child.count("(") - left_child.count(")"))
-        right_child = "(" * (right_child.count(")") - right_child.count(")")) + right_child
-
         self.nodes = [LambdaTerm.infer_type(left_child), LambdaTerm.infer_type(right_child)]
 
         if any(node.expr == self.expr for node in self.nodes):
-            raise SyntaxError("'{}' is not valid Application grammar".format(self.expr))
+            raise SyntaxError("'{}' is syntactically invalid".format(self.expr))
 
     def substitute(self, var, new_arg):
         """Application substitution is distributive: (A B)[x := M] = (A[x := M])(B[x := M])"""
@@ -352,14 +348,14 @@ class LambdaAST:
         """Returns the leftmost outermost redex, if there is one. The first outermost node is returned without checking
         if it is leftmost, but generally first outermost node == leftmost outermost node."""
 
-        def outer_redex(tree, candidates):
+        def find_outer_redex(tree, candidates):
             if tree.is_leftmost:
                 candidates.append(tree)
             else:
-                candidates.extend(outer_redex(node, candidates) for node in tree.nodes)
+                candidates.extend(find_outer_redex(node, candidates) for node in tree.nodes)
 
         candidates = []
-        outer_redex(self.tree, candidates)
+        find_outer_redex(self.tree, candidates)
 
         try:
             return next(filter(lambda node: node, candidates))
