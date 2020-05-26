@@ -295,20 +295,15 @@ class Application(LambdaTerm):
         return not is_builtin and not is_other_lambdaterm
 
     def step_tokenize(self):
-        left_child = []
         start_right_child = None
-
         for idx, char in enumerate(self.expr):
-            not_in_nested = self.expr.count("(", 0, idx) == self.expr.count(")", 0, idx)
-
-            if idx != 0 and not_in_nested:
+            if idx != 0 and self.expr.count("(", 0, idx) == self.expr.count(")", 0, idx):
                 start_right_child = idx
                 break
-            left_child.append(char)
+
+        left_child, right_child = self.expr[:start_right_child], self.expr[start_right_child:]
 
         left_child += ")" * (left_child.count("(") - left_child.count(")"))
-
-        right_child = self.expr[start_right_child:]
         right_child = "(" * (right_child.count(")") - right_child.count(")")) + right_child
 
         self.nodes = [LambdaTerm.infer_type(left_child), LambdaTerm.infer_type(right_child)]
