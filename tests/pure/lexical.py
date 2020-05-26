@@ -97,7 +97,7 @@ class ApplicationTestCase(unittest.TestCase):
             self.assertTrue(Application.check_grammar(case), case)
 
     def test_step_tokenize(self):
-        should_raise = ["(λx.x) . λx.x", "(λx.x)λ.", "(λ.x) (λx.x)", "(((x)) λx.)", "(λ)(x.)"]
+        should_raise = ["(λx.x) . λx.x", "(λx.x)λ.", "(λ.x) (λx.x)", "(((x)) λx.)", "(λ)(x.)", "xλ.x"]
         for case in should_raise:
             self.assertRaises(SyntaxError, Application(case).step_tokenize)
 
@@ -107,6 +107,7 @@ class ApplicationTestCase(unittest.TestCase):
             "x (y)": [Variable("x"), Variable("y")],
             "x(λx.y)": [Variable("x"), Abstraction("λx.y")],
             "x λx.y": [Variable("x"), Abstraction("λx.y")],
+            "(λx.x)y x": [Application("λx.x"), Variable("y"), Variable("x")],
             "(x y) y (x y)": [Application("x y"), Variable("y"), Application("x y")],
             "(z λx.λy.z) (x y)": [Application("z λx.λy.z"), Application("x y")],
             "((z) (λx.λy.z)) ((x) (y))": [Application("(z) (λx.λy.z)"), Application("(x) (y)")],
