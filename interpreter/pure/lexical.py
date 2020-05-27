@@ -45,7 +45,8 @@ class Grammar(abc.ABC):
     @abc.abstractmethod
     def check_grammar(expr):
         """"This method should check expr's top-level grammar and return whether or not it is valid. It should also
-        raise a SyntaxError if expr's top-level grammar is similar to the accepted grammar but syntactically invalid."""
+        raise a SyntaxError if expr's top-level grammar is similar to the accepted grammar but syntactically invalid.
+        """
 
     @staticmethod
     def are_parens_balanced(expr):
@@ -134,28 +135,31 @@ class LambdaTerm(Grammar):
         """
 
     @abc.abstractmethod
+    def alpha_convert(self, var, new_arg):
+        """In-place alpha conversion: replaces all free occurences of var with new_arg. Assumes step_tokenize has
+        been called.
+        """
+
+    @abc.abstractmethod
     def substitute(self, var, new_arg):
-        """Equivalent to self.expr[var := new_arg] or self.expr[new_arg/var]."""
+        """In-place capture-avoiding substitution of new_arg for var in self.expr. Assumes step_tokenize has been
+        called. Should also update self.expr using self.nodes.
+        """
 
     @property
     @abc.abstractmethod
     def tokenizable(self):
         """Whether or not this object is tokenizable. Could make everything work without this method, but felt that it
         was more explicit (and therefore worth the few extra lines of code) to have a node.tokenizable check in
-        LambdaAST.generate_tree."""
+        LambdaAST.generate_tree.
+        """
 
     @property
     @abc.abstractmethod
     def is_leftmost(self):
         """Whether or not this object is a leftmost node in a syntax tree. Will only work if step_tokenize has been
-        run."""
-
-    def get_child(self, which):
-        """Gets left or right child of LambdaTerm. Note that this method can only be called when step_tokenize has
-        been called."""
-        if self.nodes:
-            assert which in ("left", "right"), "which must be 'left' or 'right', got {}".format(which)
-            return self.nodes[0] if which == "left" else self.nodes[1]
+        run.
+        """
 
     @staticmethod
     def infer_type(expr):
@@ -174,19 +178,22 @@ class Variable(LambdaTerm):
 
     @staticmethod
     def check_grammar(expr):
-        """Variable format: <alpha> (alphabetic character(s))"""
+        """Variable format: <alpha> (alphabetic character(s))."""
         return Grammar.preprocess(expr).isalpha() and "λ" not in expr
 
     def step_tokenize(self):
         raise TypeError("Variable object is not tokenizable")
+
+    def alpha_convert(self, var, new_arg):
+        if self.expr == var:
+            self.expr = new_arg
 
     def substitute(self, var, new_arg):
         """Variable substitution follows two rules:
         1. self.expr[var := new_arg] = new_arg, self.expr == var
         2. self.expr[var := new_arg] = self.expr, self.expr != var
         """
-        if self.expr == var:
-            self.expr = new_arg
+        self.alpha_convert(var, new_arg)
 
     @property
     def tokenizable(self):
@@ -252,14 +259,20 @@ class Abstraction(LambdaTerm):
 
         self.nodes = [bound_var, body]
 
+    def alpha_convert(self, var, new_arg):
+        bound_var, body = self.nodes
+        if Variable(var) == bound_var:
+            bound_var.alpha_convert(var, new_arg)
+            body.alpha_convert(var, new_arg)
+
+        self.expr = "(λ{}.{})".format(bound_var.expr, body.expr)
+
     def substitute(self, var, new_arg):
         """Abstraction substitution follows two rules:
         1. (λvar.body)[var := new_arg] = λvar.body
         2. (λ!var.body)[var := new_arg] = (λ!var.body[var := new_arg])
         """
-        bound_var, body = self.nodes
-        if var != bound_var:
-            body.substitute(var, new_arg)
+        raise NotImplementedError()
 
     @property
     def tokenizable(self):
@@ -307,10 +320,19 @@ class Application(LambdaTerm):
         if any(node.expr == self.expr for node in self.nodes):
             raise SyntaxError("'{}' is syntactically invalid".format(self.expr))
 
+    def alpha_convert(self, var, new_arg):
+        left, right = self.nodes
+
+        left.alpha_convert(var, new_arg)
+        right.alpha_convert(var, new_arg)
+
+        self.expr = left.expr + " " + right.expr
+
     def substitute(self, var, new_arg):
-        """Application substitution is distributive: (A B)[x := M] = (A[x := M])(B[x := M])"""
-        for node in self.nodes:
-            node.substitute(var, new_arg)
+        """Application substitution follows one rule:
+        1. (A B)[x := M] = (A[x := M])(B[x := M])
+        """
+        raise NotImplementedError()
 
     @property
     def tokenizable(self):
@@ -319,9 +341,10 @@ class Application(LambdaTerm):
     @property
     def is_leftmost(self):
         """Applications are the only LambdaTerm that can be leftmost. An Application is leftmost if its left child is
-        an Abstraction."""
+        an Abstraction.
+        """
         try:
-            return isinstance(self.get_child("left"), Abstraction)
+            return isinstance(self.nodes[0], Abstraction)
         except IndexError:
             raise ValueError("[internal] call step_tokenize before querying nodes")
 
@@ -338,7 +361,8 @@ class LambdaAST:
     def generate_tree(node):
         """In-place recursive generation of syntax tree from a single LambdaTerm object. No unit test for this method,
         mostly because it's annoying to write one. However, assuming step_tokenize and tokenizable work, the only part
-        of this method that could possibly go wrong is the recursion, so no need for a test here."""
+        of this method that could possibly go wrong is the recursion, so no need for a test here.
+        """
         if node.tokenizable:
             node.step_tokenize()
             for sub_node in node.nodes:
@@ -346,7 +370,8 @@ class LambdaAST:
 
     def left_outer_redex(self):
         """Returns the leftmost outermost redex, if there is one. The first outermost node is returned without checking
-        if it is leftmost, but generally first outermost node == leftmost outermost node."""
+        if it is leftmost, but generally first outermost node == leftmost outermost node.
+        """
 
         def find_outer_redex(tree, candidates):
             if tree.is_leftmost:
@@ -381,4 +406,6 @@ if __name__ == "__main__":
 
     print(sum(times) / len(times))
 
-    print(LambdaAST("(λx.x) (λx.x) (λx.x) (λx.x)"))
+    syntax_tree = LambdaAST("(λz.((λy.z (v y)) λy.(y v)) λv.z)")
+    syntax_tree.tree.alpha_convert("x", "y")
+    print(syntax_tree)

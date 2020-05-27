@@ -51,6 +51,14 @@ class VariableTestCase(unittest.TestCase):
         for case in should_pass:
             self.assertTrue(Variable.check_grammar(case), case)
 
+    def test_alpha_convert(self):
+        cases = {"x": "x", "xy": "xy", "y": "a"}
+
+        for case, result in cases.items():
+            variable = Variable(case)
+            variable.alpha_convert("y", "a")
+            self.assertEqual(result, variable.expr, case)
+
 class AbstractionTestCase(unittest.TestCase):
 
     def test_check_grammar(self):
@@ -79,6 +87,9 @@ class AbstractionTestCase(unittest.TestCase):
             abstraction = Abstraction(case)
             abstraction.step_tokenize()
             self.assertEqual(expected, abstraction.nodes, case)
+
+    def test_alpha_convert(self):
+        ...
 
 
 class ApplicationTestCase(unittest.TestCase):
@@ -127,6 +138,9 @@ class ApplicationTestCase(unittest.TestCase):
             application.step_tokenize()
             self.assertEqual(expected, application.nodes, case)
 
+    def test_alpha_convert(self):
+        ...
+
 
 class LambdaASTTestCase(unittest.TestCase):
 
@@ -136,14 +150,14 @@ class LambdaASTTestCase(unittest.TestCase):
         for case in should_fail:
             self.assertIsNone(case.left_outer_redex(), case)
 
-        should_pass = {
+        cases = {
             LambdaAST("(λz.((λy.z (v y)) λy.(y v)) λv.z)"): Application("(λy.z (v y)) λy.(y v)"),
             LambdaAST("(y ((λv.λu.z (λu.u (y y))) λy.y))"): Application("((λv.λu.z (λu.u (y y))) λy.y)"),
             LambdaAST("(λv.(λz.z (v λv.v)) λv.y)"): Application("(λz.z (v λv.v)) λv.y"),
             LambdaAST("((λx.λv.v (λu.(v u) λz.λu.y)) v)"): Application("(λx.λv.v (λu.(v u) λz.λu.y)) v"),
             LambdaAST("(λz.(λz.y (y z)) (λv.v x))"): Application("(λz.y (y z)) (λv.v x)")
         }
-        for case, result in should_pass.items():
+        for case, result in cases.items():
             self.assertEqual(result, case.left_outer_redex(), case)
 
 
