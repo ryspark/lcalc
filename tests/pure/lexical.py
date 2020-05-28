@@ -1,6 +1,6 @@
 import unittest
 
-from interpreter.pure.lexical import Abstraction, Builtin, Application, LambdaAST, LambdaTerm, Variable
+from interpreter.pure.lexical import Abstraction, Application, Builtin, LambdaTerm, NormalOrderReducer, Variable
 
 class BuiltinTestCase(unittest.TestCase):
 
@@ -20,20 +20,40 @@ class BuiltinTestCase(unittest.TestCase):
 
 class LambdaTermTestCase(unittest.TestCase):
 
-    def test_infer_type(self):
+    def test_generate_tree(self):
         should_fail = ["aλ", "", "λ", "((λx.x)) x) y", ".", "λ.", "λλx.x", "λλx"]
         for case in should_fail:
-            self.assertRaises(SyntaxError, LambdaTerm.infer_type, case)
+            self.assertRaises(SyntaxError, LambdaTerm.generate_tree, case)
 
         cases = {
             "λx.x": Abstraction("λx.x"),
             "a": Variable("a"),
             "λx.(x y z)": Abstraction("λx.(x y z)"),
             "(λx.x) a": Application("(λx.x) a"),
-            "(λx.x)": Application("(λx.x)"),
+            "(λx.x)": Abstraction("(λx.x)"),
         }
         for case, expected in cases.items():
-            self.assertEqual(expected, LambdaTerm.infer_type(case), case)
+            self.assertEqual(expected, LambdaTerm.generate_tree(case), case)
+
+    def test_left_outer_redex(self):
+        should_fail = [
+            LambdaTerm.generate_tree("λx.x"),
+            LambdaTerm.generate_tree("(x y)"),
+            LambdaTerm.generate_tree("x ((x y)) λx.x"),
+            LambdaTerm.generate_tree("x (λx.x)")
+        ]
+        for case in should_fail:
+            self.assertIsNone(case.left_outer_redex(), case)
+
+        cases = {
+            "(λz.((λy.z (v y)) λy.(y v)) λv.z)": LambdaTerm.generate_tree("(λy.z (v y)) λy.(y v)"),
+            "(y ((λv.λu.z (λu.u (y y))) λy.y))": LambdaTerm.generate_tree("((λv.λu.z (λu.u (y y))) λy.y)"),
+            "(λv.(λz.z (v λv.v)) λv.y)": LambdaTerm.generate_tree("(λz.z (v λv.v)) λv.y"),
+            "((λx.λv.v (λu.(v u) λz.λu.y)) v)": LambdaTerm.generate_tree("(λx.λv.v (λu.(v u) λz.λu.y)) v"),
+            "(λz.(λz.y (y z)) (λv.v x))": LambdaTerm.generate_tree("(λz.y (y z)) (λv.v x)")
+        }
+        for case, result in cases.items():
+            self.assertEqual(result, LambdaTerm.generate_tree(case).left_outer_redex(), case)
 
 
 class VariableTestCase(unittest.TestCase):
@@ -51,13 +71,6 @@ class VariableTestCase(unittest.TestCase):
         for case in should_pass:
             self.assertTrue(Variable.check_grammar(case), case)
 
-    def test_alpha_convert(self):
-        cases = {"x": "x", "xy": "xy", "y": "a"}
-
-        for case, result in cases.items():
-            variable = Variable(case)
-            variable.alpha_convert("y", "a")
-            self.assertEqual(result, variable.expr, case)
 
 class AbstractionTestCase(unittest.TestCase):
 
@@ -74,7 +87,7 @@ class AbstractionTestCase(unittest.TestCase):
         for case in should_pass:
             self.assertTrue(Abstraction.check_grammar(case), case)
 
-    def test_step_tokenize(self):
+    def test_init(self):
         cases = {
             "λx.λy.λz.x (y z)": [Variable("x"), Abstraction("λy.λz.x (y z)")],
             "λy.λz.x (y z)": [Variable("y"), Abstraction("λz.x (y z)")],
@@ -84,12 +97,7 @@ class AbstractionTestCase(unittest.TestCase):
         }
 
         for case, expected in cases.items():
-            abstraction = Abstraction(case)
-            abstraction.step_tokenize()
-            self.assertEqual(expected, abstraction.nodes, case)
-
-    def test_alpha_convert(self):
-        ...
+            self.assertEqual(expected, Abstraction(case).nodes, case)
 
 
 class ApplicationTestCase(unittest.TestCase):
@@ -107,10 +115,10 @@ class ApplicationTestCase(unittest.TestCase):
         for case in should_pass:
             self.assertTrue(Application.check_grammar(case), case)
 
-    def test_step_tokenize(self):
+    def test_init(self):
         should_raise = ["(λx.x) . λx.x", "(λx.x)λ.", "(λ.x) (λx.x)", "(((x)) λx.)", "(λ)(x.)", "xλ.x"]
         for case in should_raise:
-            self.assertRaises(SyntaxError, Application(case).step_tokenize)
+            self.assertRaises(SyntaxError, Application, case)
 
         cases = {
             "x y": [Variable("x"), Variable("y")],
@@ -118,7 +126,7 @@ class ApplicationTestCase(unittest.TestCase):
             "x (y)": [Variable("x"), Variable("y")],
             "x(λx.y)": [Variable("x"), Abstraction("λx.y")],
             "x λx.y": [Variable("x"), Abstraction("λx.y")],
-            "(λx.x)y x": [Application("λx.x"), Application("y x")],
+            "(λx.x)y x": [Abstraction("λx.x"), Application("y x")],
             "(x y) y (x y)": [Application("x y"), Application("y (x y)")],
             "(z λx.λy.z) (x y)": [Application("z λx.λy.z"), Application("x y")],
             "((z) (λx.λy.z)) ((x) (y))": [Application("(z) (λx.λy.z)"), Application("(x) (y)")],
@@ -131,34 +139,32 @@ class ApplicationTestCase(unittest.TestCase):
             "((λx.x) λx.x) λx. (λxy.y x)": [Application("(λx.x) λx.x"), Abstraction("λx. (λxy.y x)")],
             "((λx.x) λx.x) λx.(λxy.y x)": [Application("(λx.x) λx.x"), Abstraction("λx.(λxy.y x)")],
             "((λx.x) λx.x)λx.(λxy.y x (λxy.y x))": [Application("(λx.x) λx.x"), Abstraction("λx.(λxy.y x (λxy.y x))")],
-            "((λx.x) λx.x)λx. (λxy.y x)λx.(x)": [Application("(λx.x) λx.x"), Application("λx. (λxy.y x)λx.(x)")],
+            "((λx.x) λx.x)λx. (λxy.y x)λx.(x)": [Application("(λx.x) λx.x"), Abstraction("λx. (λxy.y x)λx.(x)")],
         }
         for case, expected in cases.items():
-            application = Application(case)
-            application.step_tokenize()
-            self.assertEqual(expected, application.nodes, case)
-
-    def test_alpha_convert(self):
-        ...
+            self.assertEqual(expected, Application(case).nodes, case)
 
 
-class LambdaASTTestCase(unittest.TestCase):
+class NormalOrderReducerTestCase(unittest.TestCase):
 
-    def test_left_outer_redex(self):
-        # NOTE: also implicitly tests generate_tree
-        should_fail = [LambdaAST("λx.x"), LambdaAST("(x y)"), LambdaAST("x ((x y)) λx.x"), LambdaAST("x (λx.x)")]
+    def test_alpha_reduce(self):
+        should_fail = ["(λx.x λy.y x)", "λx.(λy.λz.y)", "λx.λy.y"]
         for case in should_fail:
-            self.assertIsNone(case.left_outer_redex(), case)
+            nor = NormalOrderReducer(case)
+            self.assertRaises(ValueError, nor.alpha_convert, Variable("x"), Variable("y"))
 
         cases = {
-            LambdaAST("(λz.((λy.z (v y)) λy.(y v)) λv.z)"): Application("(λy.z (v y)) λy.(y v)"),
-            LambdaAST("(y ((λv.λu.z (λu.u (y y))) λy.y))"): Application("((λv.λu.z (λu.u (y y))) λy.y)"),
-            LambdaAST("(λv.(λz.z (v λv.v)) λv.y)"): Application("(λz.z (v λv.v)) λv.y"),
-            LambdaAST("((λx.λv.v (λu.(v u) λz.λu.y)) v)"): Application("(λx.λv.v (λu.(v u) λz.λu.y)) v"),
-            LambdaAST("(λz.(λz.y (y z)) (λv.v x))"): Application("(λz.y (y z)) (λv.v x)")
+            "λx.x": "(λy.y)",
+            "λx.(x λa.a)": "(λy.(y (λa.a)))",
+            "λx.(λa.(b c) x)": "(λy.(λa.((b c) y)))",
+            "λx.(x λx.x)": "(λy.(y (λx.x)))",
+            "λx.((λb.x(v b)) λb.(b v x)) λv.x": "(λy.(((λb.(y (v b))) (λb.(b (v y)))) (λv.y)))",
+            "λx.((λb.λx.x(v b)) λb.(b v x)) λv.x": "(λy.(((λb.(λx.(x (v b)))) (λb.(b (v y)))) (λv.y)))"
         }
         for case, result in cases.items():
-            self.assertEqual(result, case.left_outer_redex(), case)
+            nor = NormalOrderReducer(case)
+            nor.alpha_convert(Variable("x"), Variable("y"))
+            self.assertEqual(result, nor.expr, case)
 
 
 if __name__ == '__main__':

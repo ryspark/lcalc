@@ -33,13 +33,11 @@ class Grammar(abc.ABC):
     """Superclass that represents any character/set of characters present in lambda calculus."""
     illegal = []
 
-    def __init__(self, expr, check=False):
+    def __init__(self, expr):
+        """Does not provide grammar check: call check_grammar manually before instantiating Grammar obj."""
         self.expr = Grammar.preprocess(expr)
         self._cls = type(self).__name__
         self.nodes = []
-
-        if check and not self.check_grammar(self.expr):
-            raise SyntaxError("'{}' not valid {} grammar".format(expr, self._cls))
 
     @staticmethod
     @abc.abstractmethod
@@ -103,7 +101,7 @@ class Grammar(abc.ABC):
 
     def __eq__(self, other):
         if isinstance(other, Grammar):
-            return all(var == other_var for var, other_var in zip(vars(self), vars(other)))
+            return all(attr == other_attr for attr, other_attr in zip(vars(self).values(), vars(other).values()))
         return False
 
 
@@ -121,30 +119,42 @@ class Builtin(Grammar):
 
 
 class LambdaTerm(Grammar):
-    """Represents a valid λ-term: variable, abstraction, or application."""
+    """Represents a valid λ-term: variable, abstraction, or application. Also abstractly defines functionality that
+    will allow a syntax tree to be built.
+    """
+
+    def __init__(self, expr):
+        """In-place recursive generation of syntax tree from a single LambdaTerm object. No unit test for this method,
+        mostly because it's annoying to write one. However, assuming step_tokenize and tokenizable work, the only part
+        of this method that could possibly go wrong is the recursion, so no need for a test here.
+        """
+        super().__init__(expr)
+        self.bound = []
+
+        self.tokenize()
+        self.generate_bound()
 
     @abc.abstractmethod
-    def step_tokenize(self):
-        """This method should tokenize a LambdaTerm only one level down. Assumes top-level grammar has been checked,
-        but raises an error if second-level grammar is not valid. Should set self.nodes attribute, and will always
-        generate two nodes (lambda calculus ASTs are binary), even for Applications.
-
-        Examples: "(x y) (λx.λy.λz.x (y z))" -> [Application("x y"), Abstraction("λx.λy.λz.x (y z)")]
-                  "λx.λy.λz.x (y z)" -> [Variable("x"), Abstraction("λy.λz.x (y z)")]
-                  "(λx.x) (λx.x) (λx.x)" -> [Application("λx.x"), Application("(λx.x) (λx.x)")]
+    def tokenize(self):
+        """This method should recursively tokenize a LambdaTerm. Assumes top-level grammar has been checked, but raises
+        an error if second-level grammar is not valid. Should set self.nodes attribute, and will always generate two
+        nodes (lambda calculus ASTs are binary), even for Applications.
         """
+
+    @abc.abstractmethod
+    def generate_bound(self):
+        """Generates bound variable list and sets self.bound attr. Assumes step_tokenize has been called."""
 
     @abc.abstractmethod
     def alpha_convert(self, var, new_arg):
-        """In-place alpha conversion: replaces all free occurences of var with new_arg. Assumes step_tokenize has
-        been called.
+        """Given an abstraction λvar.M, this method renames all free occurences of var in M to new_arg. Proper usage of
+        this method is provided in NormalOrderReducer. Assumes var is a Variable and new_arg a LambdaTerm, and should
+        not update self.expr with alpha-converted expr.
         """
 
     @abc.abstractmethod
-    def substitute(self, var, new_arg):
-        """In-place capture-avoiding substitution of new_arg for var in self.expr. Assumes step_tokenize has been
-        called. Should also update self.expr using self.nodes.
-        """
+    def update_expr(self):
+        """Updates self.expr from self.nodes. Used after alpha_convert but not by it."""
 
     @property
     @abc.abstractmethod
@@ -157,12 +167,19 @@ class LambdaTerm(Grammar):
     @property
     @abc.abstractmethod
     def is_leftmost(self):
-        """Whether or not this object is a leftmost node in a syntax tree. Will only work if step_tokenize has been
-        run.
-        """
+        """Whether or not this object is a leftmost node in a syntax tree. Only works if step_tokenize has been run."""
+
+    def check_args(self, var, new_arg):
+        """Checks alpha_convert args."""
+        if not isinstance(var, Variable) or not isinstance(new_arg, Variable):
+            raise ValueError("both var and new_arg must be of type Variable")
+        if not isinstance(self, Variable) and not self.nodes:
+            raise ValueError("call step_tokenize before using check_args")
+        if new_arg in self.bound:
+            raise ValueError("'{}' is bound in '{}'".format(new_arg.expr, self.expr))
 
     @staticmethod
-    def infer_type(expr):
+    def generate_tree(expr):
         """Converts expr to the proper LambdaTerm type, raises SyntaxError if expr is not a valid LambdaType."""
         if not isinstance(expr, str):
             expr = "".join(char for char in expr)
@@ -171,6 +188,24 @@ class LambdaTerm(Grammar):
             if subclass.check_grammar(expr):
                 return subclass(expr)
         raise SyntaxError("'{}' not valid LambdaTerm grammar".format(expr))
+
+    def left_outer_redex(self):
+        """Returns the leftmost outermost redex, if there is one. The first outermost node is returned without checking
+        if it is leftmost, but generally first outermost node == leftmost outermost node.
+        """
+
+        def find_outer_redex(tree):
+            if tree.is_leftmost:
+                return tree
+            try:
+                return next(filter(lambda node: node, (find_outer_redex(node) for node in tree.nodes)))
+            except StopIteration:
+                return None
+
+        return find_outer_redex(self)
+
+    def __str__(self):
+        return self.display()
 
 
 class Variable(LambdaTerm):
@@ -181,19 +216,19 @@ class Variable(LambdaTerm):
         """Variable format: <alpha> (alphabetic character(s))."""
         return Grammar.preprocess(expr).isalpha() and "λ" not in expr
 
-    def step_tokenize(self):
-        raise TypeError("Variable object is not tokenizable")
+    def tokenize(self):
+        """Variables are not tokenizable, so do nothing."""
+
+    def generate_bound(self):
+        """Variables have no nodes and therefore no bound variables."""
 
     def alpha_convert(self, var, new_arg):
-        if self.expr == var:
-            self.expr = new_arg
+        self.check_args(var, new_arg)
+        if var.expr == self.expr:
+            self.expr = new_arg.expr
 
-    def substitute(self, var, new_arg):
-        """Variable substitution follows two rules:
-        1. self.expr[var := new_arg] = new_arg, self.expr == var
-        2. self.expr[var := new_arg] = self.expr, self.expr != var
-        """
-        self.alpha_convert(var, new_arg)
+    def update_expr(self):
+        """Variables have no nodes, so do nothing."""
 
     @property
     def tokenizable(self):
@@ -208,7 +243,7 @@ class Abstraction(LambdaTerm):
     """Abstraction: the basic datatype in lambda calculus."""
 
     @staticmethod
-    def get_bound_var(expr):
+    def get_arg(expr):
         """Assumes grammar check has been run."""
         return expr[expr.index("λ") + 1:expr.index(".")]
 
@@ -241,10 +276,10 @@ class Abstraction(LambdaTerm):
             return False
 
         # check 2: is bound variable valid?
-        bound_var = Abstraction.get_bound_var(expr)
-        if not Variable.check_grammar(bound_var):
+        arg = Abstraction.get_arg(expr)
+        if not Variable.check_grammar(arg):
             return False
-        elif any(Builtin.check_grammar(char) for char in bound_var):
+        elif any(Builtin.check_grammar(char) for char in arg):
             raise SyntaxError("'{}' contains an illegal bound variable".format(expr))
 
         # check 3: is body valid?
@@ -253,26 +288,29 @@ class Abstraction(LambdaTerm):
             raise SyntaxError("'{}' contains an illegal abstraction body".format(expr))
         return True
 
-    def step_tokenize(self):
-        bound_var = Variable(Abstraction.get_bound_var(self.expr))
-        body = LambdaTerm.infer_type(Abstraction.get_body(self.expr))
+    def tokenize(self):
+        arg = Variable(Abstraction.get_arg(self.expr))
+        body = LambdaTerm.generate_tree(Abstraction.get_body(self.expr))
 
-        self.nodes = [bound_var, body]
+        self.nodes = [arg, body]
+
+    def generate_bound(self):
+        arg, body = self.nodes
+        self.bound = body.bound + [arg]
 
     def alpha_convert(self, var, new_arg):
-        bound_var, body = self.nodes
-        if Variable(var) == bound_var:
-            bound_var.alpha_convert(var, new_arg)
+        self.check_args(var, new_arg)
+        arg, body = self.nodes
+
+        if var != arg and new_arg not in self.bound:
             body.alpha_convert(var, new_arg)
 
-        self.expr = "(λ{}.{})".format(bound_var.expr, body.expr)
+    def update_expr(self):
+        arg, body = self.nodes
+        arg.update_expr()
+        body.update_expr()
 
-    def substitute(self, var, new_arg):
-        """Abstraction substitution follows two rules:
-        1. (λvar.body)[var := new_arg] = λvar.body
-        2. (λ!var.body)[var := new_arg] = (λ!var.body[var := new_arg])
-        """
-        raise NotImplementedError()
+        self.expr = "(λ{}.{})".format(arg.expr, body.expr)
 
     @property
     def tokenizable(self):
@@ -307,7 +345,7 @@ class Application(LambdaTerm):
         is_other_lambdaterm = Variable.check_grammar(expr) or Abstraction.check_grammar(expr)
         return not is_builtin and not is_other_lambdaterm
 
-    def step_tokenize(self):
+    def tokenize(self):
         start_right_child = None
         for idx in range(1, len(self.expr)):
             if self.expr.count("(", 0, idx) == self.expr.count(")", 0, idx):
@@ -315,24 +353,28 @@ class Application(LambdaTerm):
                 break
 
         left_child, right_child = self.expr[:start_right_child], self.expr[start_right_child:]
-        self.nodes = [LambdaTerm.infer_type(left_child), LambdaTerm.infer_type(right_child)]
+        self.nodes = [LambdaTerm.generate_tree(left_child), LambdaTerm.generate_tree(right_child)]
 
         if any(node.expr == self.expr for node in self.nodes):
             raise SyntaxError("'{}' is syntactically invalid".format(self.expr))
 
+    def generate_bound(self):
+        left, right = self.nodes
+        self.bound = left.bound + right.bound
+
     def alpha_convert(self, var, new_arg):
+        self.check_args(var, new_arg)
         left, right = self.nodes
 
         left.alpha_convert(var, new_arg)
         right.alpha_convert(var, new_arg)
 
-        self.expr = left.expr + " " + right.expr
+    def update_expr(self):
+        left, right = self.nodes
+        left.update_expr()
+        right.update_expr()
 
-    def substitute(self, var, new_arg):
-        """Application substitution follows one rule:
-        1. (A B)[x := M] = (A[x := M])(B[x := M])
-        """
-        raise NotImplementedError()
+        self.expr = "({} {})".format(left.expr, right.expr)
 
     @property
     def tokenizable(self):
@@ -343,49 +385,28 @@ class Application(LambdaTerm):
         """Applications are the only LambdaTerm that can be leftmost. An Application is leftmost if its left child is
         an Abstraction.
         """
-        try:
-            return isinstance(self.nodes[0], Abstraction)
-        except IndexError:
-            raise ValueError("[internal] call step_tokenize before querying nodes")
+        assert self.nodes, "[internal] call step_tokenize before querying nodes"
+        return isinstance(self.nodes[0], Abstraction)
 
 
-class LambdaAST:
-    """Implements a syntax tree builder as well as normal-order beta reduction of that syntax tree."""
+class NormalOrderReducer:
+    """Implements normal-order beta reduction of a syntax tree."""
 
     def __init__(self, expr):
         self.expr = expr
-        self.tree = LambdaTerm.infer_type(expr)
-        LambdaAST.generate_tree(self.tree)
+        self.tree = LambdaTerm.generate_tree(expr)
 
-    @staticmethod
-    def generate_tree(node):
-        """In-place recursive generation of syntax tree from a single LambdaTerm object. No unit test for this method,
-        mostly because it's annoying to write one. However, assuming step_tokenize and tokenizable work, the only part
-        of this method that could possibly go wrong is the recursion, so no need for a test here.
-        """
-        if node.tokenizable:
-            node.step_tokenize()
-            for sub_node in node.nodes:
-                LambdaAST.generate_tree(sub_node)
+    def alpha_convert(self, var, new_arg):
+        if not isinstance(self.tree, Abstraction):
+            raise ValueError("top-level expr is not an Application")
 
-    def left_outer_redex(self):
-        """Returns the leftmost outermost redex, if there is one. The first outermost node is returned without checking
-        if it is leftmost, but generally first outermost node == leftmost outermost node.
-        """
+        arg, body = self.tree.nodes
 
-        def find_outer_redex(tree, candidates):
-            if tree.is_leftmost:
-                candidates.append(tree)
-            else:
-                candidates.extend(find_outer_redex(node, candidates) for node in tree.nodes)
+        body.alpha_convert(var, new_arg)  # alpha-convert M
+        arg.alpha_convert(var, new_arg)   # rename λvar.M -> λnew_arg.M
 
-        candidates = []
-        find_outer_redex(self.tree, candidates)
-
-        try:
-            return next(filter(lambda node: node, candidates))
-        except StopIteration:
-            return None
+        self.tree.update_expr()
+        self.expr = self.tree.expr
 
     def __repr__(self):
         return repr(self.tree)
@@ -395,17 +416,7 @@ class LambdaAST:
 
 
 if __name__ == "__main__":
-    import time
-    times = []
-
-    for _ in range(100):
-        start = time.time()
-        syntax_tree = LambdaAST("(λz.((λy.z (v y)) λy.(y v)) λv.z)")
-        syntax_tree.left_outer_redex()
-        times.append(time.time() - start)
-
-    print(sum(times) / len(times))
-
-    syntax_tree = LambdaAST("(λz.((λy.z (v y)) λy.(y v)) λv.z)")
-    syntax_tree.tree.alpha_convert("x", "y")
+    syntax_tree = NormalOrderReducer("λz.( (λy.λz.z (v y)) λy.(y v) ) λv.z")
+    # syntax_tree = NormalOrderReducer("λx.(x λy.y) y")
+    syntax_tree.alpha_convert(Variable("z"), Variable("x"))
     print(syntax_tree)
