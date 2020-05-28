@@ -106,8 +106,8 @@ class Grammar(abc.ABC):
 
 
 class Builtin(Grammar):
-    """Built-in lambda calculus tokens: 'λ', '.', '(', ')', ' '. """
-    TOKENS = ["λ", ".", "(", ")", " "]
+    """Built-in lambda calculus tokens: 'λ', '.', '(', ')' """
+    TOKENS = ["λ", ".", "(", ")"]
 
     @staticmethod
     def check_grammar(expr):
@@ -417,6 +417,5 @@ class NormalOrderReducer:
 
 if __name__ == "__main__":
     syntax_tree = NormalOrderReducer("λz.( (λy.λz.z (v y)) λy.(y v) ) λv.z")
-    # syntax_tree = NormalOrderReducer("λx.(x λy.y) y")
     syntax_tree.alpha_convert(Variable("z"), Variable("x"))
     print(syntax_tree)
