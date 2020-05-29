@@ -28,7 +28,6 @@ means that function application must be separated by spaces or parentheses.
 """
 
 from abc import abstractmethod, ABC
-from copy import copy, deepcopy
 from string import ascii_letters
 
 
@@ -82,10 +81,10 @@ class Grammar(ABC):
         return Grammar.preprocess(expr)
 
     @staticmethod
-    def subscript(var, n):
+    def subscript(var, num):
         """Returns var with subscript of n."""
         subscripted = var
-        for digit in str(n):
+        for digit in str(num):
             subscripted += Grammar.SUBS[int(digit)]
         return subscripted
 
@@ -157,15 +156,13 @@ class LambdaTerm(Grammar):
     def alpha_convert(self, var, new_arg):
         """Given an abstraction λvar.M, this method renames all free occurences of var in M to new_arg. Proper usage of
         this method is provided in NormalOrderReducer. Assumes var is a Variable and new_arg a LambdaTerm, and should
-        not update self.expr with alpha-converted expr.
+        not update self.expr with alpha-converted expr (unless self is Variable).
         """
 
     @abstractmethod
     def beta_reduce(self, var, new_term):
         """Given a redex (λvar.M)new_term, this method substitutes all free occurences of x replaced by new_term. As
-        with alpha_convert, this method is used in NormalOrderReducer; however, unlike alpha_convert, it also
-        returns the beta-reduced expr (needed because types will change during reduction; e.g., Abstractions become
-        Applications after substitution).
+        with alpha_convert, this method is used in NormalOrderReducer. Should call update_expr
         """
 
     @abstractmethod
@@ -239,6 +236,7 @@ class LambdaTerm(Grammar):
         return self.display()
 
     def __eq__(self, other):
+        """Compares by attr but excludes 'bound' attr."""
         if not isinstance(other, LambdaTerm):
             return False
 
@@ -246,10 +244,6 @@ class LambdaTerm(Grammar):
             if attr != "bound" and vars(self)[attr] != vars(other)[attr]:
                 return False
         return True
-
-    def __copy__(self):
-        """Used in beta-reduction to ensure that nodes do not get duplicated, leading to unexpected results."""
-        return type(self)(self.expr)
 
 
 class Variable(LambdaTerm):
@@ -271,10 +265,7 @@ class Variable(LambdaTerm):
 
     def beta_reduce(self, var, new_term):
         """Beta conversion is the same as alpha conversion for Variables."""
-        if self.expr == var.expr:
-            self.expr = new_term.expr
-            return copy(new_term)
-        return self
+        self.alpha_convert(var, new_term)
 
     def generate_bound(self):
         """Variables have no nodes and therefore no bound variables."""
@@ -361,14 +352,14 @@ class Abstraction(LambdaTerm):
             if var not in body.bound and new_term in body.bound:
                 new_term.alpha_convert(new_term, self.get_new_arg(var, new_term))
 
-            body = body.beta_reduce(var, new_term)
-            body.update_expr()
+            body.beta_reduce(var, new_term)
             self.nodes = [arg, body]
-        return copy(body)
+
+        self.update_expr()
 
     def generate_bound(self):
         arg, body = self.nodes
-        self.bound += deepcopy(body.bound) + [copy(arg)]
+        self.bound += body.bound + [arg]
 
         self.propagate_bound()
 
@@ -440,14 +431,16 @@ class Application(LambdaTerm):
         if var in self.bound:
             new_term.alpha_convert(new_term, self.get_new_arg(var, new_term))
 
-        self.nodes = [node.beta_reduce(var, new_term) for node in self.nodes]
-        self.update_expr()
+        left, right = self.nodes
 
-        return self
+        left.beta_reduce(var, new_term)
+        right.beta_reduce(var, new_term)
+
+        self.update_expr()
 
     def generate_bound(self):
         left, right = self.nodes
-        self.bound += deepcopy(left.bound) + deepcopy(right.bound)
+        self.bound += left.bound + right.bound
 
         self.propagate_bound()
 
@@ -456,7 +449,7 @@ class Application(LambdaTerm):
         left.update_expr()
         right.update_expr()
 
-        self.expr = f"({left.expr} {right.expr})"
+        self.expr = f"(({left.expr}) ({right.expr}))"
 
     @property
     def tokenizable(self):
@@ -478,19 +471,19 @@ class NormalOrderReducer:
         self.tree = LambdaTerm.generate_tree(expr)
 
     def beta_reduce(self):
-        reduced = None
+        """In-place normal-order beta reduction of self.tree."""
         redex = self.tree.left_outer_redex()
 
         while redex is not None:
             abstraction, new_term = redex.nodes
             arg, body = abstraction.nodes
 
-            reduced = body.beta_reduce(arg, new_term)
-            reduced.update_expr()
+            body.beta_reduce(arg, new_term)
+            self.tree = body
 
-            redex = reduced.left_outer_redex()
+            redex = self.tree.left_outer_redex()
 
-        return reduced
+        self.tree.expr = Grammar.preprocess(self.tree.expr)  # for greater readability
 
     def __repr__(self):
         return repr(self.tree)
@@ -500,7 +493,13 @@ class NormalOrderReducer:
 
 
 if __name__ == "__main__":
-    # syntax_tree = NormalOrderReducer("(λy.λx.y x) x")
-    syntax_tree = NormalOrderReducer("var x")
+    should_fail = ["((λz.z z) (λz.z z))"]
+    for case in should_fail:
+        nor = NormalOrderReducer(case)
+        nor.beta_reduce()
+        print(nor == NormalOrderReducer(case), case)
+
+    syntax_tree = NormalOrderReducer("(λz.z z)(λz.z z)")
     print("TREE:", syntax_tree)
-    print("\nFINAL:", syntax_tree.beta_reduce())
+    syntax_tree.beta_reduce()
+    print("\nFINAL:", syntax_tree)
