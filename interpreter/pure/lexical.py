@@ -340,6 +340,7 @@ class Abstraction(LambdaTerm):
 
     def alpha_convert(self, var, new_arg):
         arg, body = self.nodes
+
         if new_arg in self.bound:
             raise ValueError(f"'{new_arg.expr}' is bound in '{self.expr}'")
         elif var != arg:
@@ -446,6 +447,7 @@ class Application(LambdaTerm):
 
     def update_expr(self):
         left, right = self.nodes
+
         left.update_expr()
         right.update_expr()
 
@@ -490,16 +492,3 @@ class NormalOrderReducer:
 
     def __str__(self):
         return self.tree.display()
-
-
-if __name__ == "__main__":
-    should_fail = ["((λz.z z) (λz.z z))"]
-    for case in should_fail:
-        nor = NormalOrderReducer(case)
-        nor.beta_reduce()
-        print(nor == NormalOrderReducer(case), case)
-
-    syntax_tree = NormalOrderReducer("(λz.z z)(λz.z z)")
-    print("TREE:", syntax_tree)
-    syntax_tree.beta_reduce()
-    print("\nFINAL:", syntax_tree)
