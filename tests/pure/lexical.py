@@ -54,7 +54,7 @@ class LambdaTermTestCase(unittest.TestCase):
             "(λz.(λz.y (y z)) (λv.v x))": LambdaTerm.generate_tree("(λz.y (y z)) (λv.v x)")
         }
         for case, result in cases.items():
-            self.assertEqual(result, LambdaTerm.generate_tree(case).left_outer_redex(), case)
+            self.assertEqual(result.expr, LambdaTerm.generate_tree(case).left_outer_redex().expr, case)
 
 
 class VariableTestCase(unittest.TestCase):
@@ -98,7 +98,7 @@ class AbstractionTestCase(unittest.TestCase):
         }
 
         for case, expected in cases.items():
-            self.assertEqual(expected, Abstraction(case).nodes, case)
+            self.assertEqual([node.expr for node in expected], [node.expr for node in Abstraction(case).nodes], case)
 
 
 class ApplicationTestCase(unittest.TestCase):
@@ -123,6 +123,7 @@ class ApplicationTestCase(unittest.TestCase):
 
         cases = {
             "x y": [Variable("x"), Variable("y")],
+            "var y": [Variable("var"), Variable("y")],
             "(x) y": [Variable("x"), Variable("y")],
             "x (y)": [Variable("x"), Variable("y")],
             "x(λx.y)": [Variable("x"), Abstraction("λx.y")],
@@ -143,29 +144,13 @@ class ApplicationTestCase(unittest.TestCase):
             "((λx.x) λx.x)λx. (λxy.y x)λx.(x)": [Application("(λx.x) λx.x"), Abstraction("λx. (λxy.y x)λx.(x)")],
         }
         for case, expected in cases.items():
-            self.assertEqual(expected, Application(case).nodes, case)
+            self.assertEqual([node.expr for node in expected], [node.expr for node in Application(case).nodes], case)
 
 
 class NormalOrderReducerTestCase(unittest.TestCase):
 
-    def test_alpha_reduce(self):
-        should_fail = ["(λx.x λy.y x)", "λx.(λy.λz.y)", "λx.λy.y"]
-        for case in should_fail:
-            nor = NormalOrderReducer(case)
-            self.assertRaises(ValueError, nor.alpha_convert, Variable("x"), Variable("y"))
-
-        cases = {
-            "λx.x": "(λy.y)",
-            "λx.(x λa.a)": "(λy.(y (λa.a)))",
-            "λx.(λa.(b c) x)": "(λy.(λa.((b c) y)))",
-            "λx.(x λx.x)": "(λy.(y (λx.x)))",
-            "λx.((λb.x(v b)) λb.(b v x)) λv.x": "(λy.(((λb.(y (v b))) (λb.(b (v y)))) (λv.y)))",
-            "λx.((λb.λx.x(v b)) λb.(b v x)) λv.x": "(λy.(((λb.(λx.(x (v b)))) (λb.(b (v y)))) (λv.y)))"
-        }
-        for case, result in cases.items():
-            nor = NormalOrderReducer(case)
-            nor.alpha_convert(Variable("x"), Variable("y"))
-            self.assertEqual(result, nor.expr, case)
+    def test_beta_reduce(self):
+        pass
 
 
 if __name__ == '__main__':
