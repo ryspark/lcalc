@@ -237,7 +237,16 @@ class LambdaTerm(Grammar):
 
     def __str__(self):
         return self.display()
-    
+
+    def __eq__(self, other):
+        if not isinstance(other, LambdaTerm):
+            return False
+
+        for attr in vars(self):
+            if attr != "bound" and vars(self)[attr] != vars(other)[attr]:
+                return False
+        return True
+
     def __copy__(self):
         """Used in beta-reduction to ensure that nodes do not get duplicated, leading to unexpected results."""
         return type(self)(self.expr)

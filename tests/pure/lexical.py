@@ -54,7 +54,7 @@ class LambdaTermTestCase(unittest.TestCase):
             "(λz.(λz.y (y z)) (λv.v x))": LambdaTerm.generate_tree("(λz.y (y z)) (λv.v x)")
         }
         for case, result in cases.items():
-            self.assertEqual(result.expr, LambdaTerm.generate_tree(case).left_outer_redex().expr, case)
+            self.assertEqual(result, LambdaTerm.generate_tree(case).left_outer_redex(), case)
 
 
 class VariableTestCase(unittest.TestCase):
@@ -98,7 +98,7 @@ class AbstractionTestCase(unittest.TestCase):
         }
 
         for case, expected in cases.items():
-            self.assertEqual([node.expr for node in expected], [node.expr for node in Abstraction(case).nodes], case)
+            self.assertEqual(expected, Abstraction(case).nodes, case)
 
 
 class ApplicationTestCase(unittest.TestCase):
@@ -144,7 +144,7 @@ class ApplicationTestCase(unittest.TestCase):
             "((λx.x) λx.x)λx. (λxy.y x)λx.(x)": [Application("(λx.x) λx.x"), Abstraction("λx. (λxy.y x)λx.(x)")],
         }
         for case, expected in cases.items():
-            self.assertEqual([node.expr for node in expected], [node.expr for node in Application(case).nodes], case)
+            self.assertEqual(expected, Application(case).nodes, case)
 
 
 class NormalOrderReducerTestCase(unittest.TestCase):
