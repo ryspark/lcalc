@@ -137,7 +137,7 @@ class LambdaTerm(Grammar):
 
     def __init__(self, expr):
         """In-place recursive generation of syntax tree from a single LambdaTerm object. No unit test for this method,
-        mostly because it's annoying to write one. However, assuming step_tokenize and tokenizable work, the only part
+        mostly because it's annoying to write one. However, assuming tokenize and tokenizable work, the only part
         of this method that could possibly go wrong is the recursion, so no need for a test here.
         """
         super().__init__(expr)
@@ -168,7 +168,7 @@ class LambdaTerm(Grammar):
 
     @abstractmethod
     def generate_bound(self):
-        """Generates bound variable list and sets self.bound attr. Assumes step_tokenize has been called."""
+        """Generates bound variable list and sets self.bound attr. Assumes tokenize has been called."""
 
     @abstractmethod
     def update_expr(self):
@@ -185,7 +185,7 @@ class LambdaTerm(Grammar):
     @property
     @abstractmethod
     def is_leftmost(self):
-        """Whether or not this object is a leftmost node in a syntax tree. Only works if step_tokenize has been run."""
+        """Whether or not this object is a leftmost node in a syntax tree. Only works if tokenize has been run."""
 
     @staticmethod
     def generate_tree(expr):
@@ -218,14 +218,14 @@ class LambdaTerm(Grammar):
         if not isinstance(var, Variable) or not isinstance(new_arg, Variable if mode == "alpha" else LambdaTerm):
             raise ValueError("both var and new_arg must be of type Variable")
         if not isinstance(self, Variable) and not self.nodes:
-            raise ValueError("call step_tokenize before using check_args")
+            raise ValueError("call tokenize before using check_args")
         if new_arg in self.bound and mode == "alpha":
             raise ValueError(f"'{new_arg.expr}' is bound in '{self.expr}'")
 
     def get_new_arg(self, var, new_term):
         """Returns the next term that isn't var nor arg and occurs in neither body nor new_term."""
-        already_used = [var] + new_term.bound if new_term.tokenizable else [new_term]
-        for node in self.nodes:
+        already_used = [var]
+        for node in self.nodes + [new_term]:
             if node.tokenizable:
                 already_used.append(node)
             else:
