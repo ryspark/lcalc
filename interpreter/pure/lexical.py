@@ -27,9 +27,12 @@ implementation favors multi-character LambdaVars over currying, a purely arbitra
 means that function application must be separated by spaces or parentheses.
 """
 
-import abc
+from abc import abstractmethod, ABC
+from copy import copy, deepcopy
+from string import ascii_letters
 
-class Grammar(abc.ABC):
+
+class Grammar(ABC):
     """Superclass that represents any character/set of characters present in lambda calculus."""
     illegal = []
     SUBS = ["\u2080", "\u2081", "\u2082", "\u2083", "\u2084", "\u2085", "\u2086", "\u2087", "\u2088", "\u2089"]
@@ -41,7 +44,7 @@ class Grammar(abc.ABC):
         self.nodes = []
 
     @staticmethod
-    @abc.abstractmethod
+    @abstractmethod
     def check_grammar(expr):
         """"This method should check expr's top-level grammar and return whether or not it is valid. It should also
         raise a SyntaxError if expr's top-level grammar is similar to the accepted grammar but syntactically invalid.
@@ -143,40 +146,36 @@ class LambdaTerm(Grammar):
         self.tokenize()
         self.generate_bound()
 
-    def copy(self):
-        """Used in beta-reduction to ensure that nodes do not get duplicated, leading to infinite recursion."""
-        return type(self)(self.expr)
-
-    @abc.abstractmethod
+    @abstractmethod
     def tokenize(self):
         """This method should recursively tokenize a LambdaTerm. Assumes top-level grammar has been checked, but raises
         an error if second-level grammar is not valid. Should set self.nodes attribute, and will always generate two
         nodes (lambda calculus ASTs are binary), even for Applications.
         """
 
-    @abc.abstractmethod
+    @abstractmethod
     def alpha_convert(self, var, new_arg):
         """Given an abstraction λvar.M, this method renames all free occurences of var in M to new_arg. Proper usage of
         this method is provided in NormalOrderReducer. Assumes var is a Variable and new_arg a LambdaTerm, and should
         not update self.expr with alpha-converted expr.
         """
 
-    @abc.abstractmethod
+    @abstractmethod
     def beta_reduce(self, var, new_term):
         """Given a redex (λvar.M)new_term, this method substitutes all free occurences of x replaced by new_term. As
         with alpha_convert, this method is used in NormalOrderReducer.
         """
 
-    @abc.abstractmethod
+    @abstractmethod
     def generate_bound(self):
         """Generates bound variable list and sets self.bound attr. Assumes step_tokenize has been called."""
 
-    @abc.abstractmethod
+    @abstractmethod
     def update_expr(self):
         """Updates self.expr from self.nodes. Used after alpha_convert but not by it."""
 
     @property
-    @abc.abstractmethod
+    @abstractmethod
     def tokenizable(self):
         """Whether or not this object is tokenizable. Could make everything work without this method, but felt that it
         was more explicit (and therefore worth the few extra lines of code) to have a node.tokenizable check in
@@ -184,7 +183,7 @@ class LambdaTerm(Grammar):
         """
 
     @property
-    @abc.abstractmethod
+    @abstractmethod
     def is_leftmost(self):
         """Whether or not this object is a leftmost node in a syntax tree. Only works if step_tokenize has been run."""
 
@@ -223,31 +222,59 @@ class LambdaTerm(Grammar):
         if new_arg in self.bound and mode == "alpha":
             raise ValueError(f"'{new_arg.expr}' is bound in '{self.expr}'")
 
+    def get_new_arg(self, var, new_term):
+        """Returns the next term that isn't var nor arg and occurs in neither body nor new_term."""
+        already_used = [var] + new_term.bound if new_term.tokenizable else [new_term]
+        for node in self.nodes:
+            if node.tokenizable:
+                already_used.append(node)
+            else:
+                already_used.extend(node.bound)
+
+        subscript = 0
+        while True:
+            new_arg = Grammar.subscript(new_term.expr, subscript)
+            if new_arg not in already_used:
+                return Variable(new_arg)
+            subscript += 1
+
+    def propagate_bound(self):
+        """Propagates self.bound one level down. Called from generate_bound."""
+        for node in self.nodes:
+            if node.tokenizable:
+                node.bound += self.bound
+
     def __str__(self):
         return self.display()
+    
+    def __copy__(self):
+        """Used in beta-reduction to ensure that nodes do not get duplicated, leading to unexpected results."""
+        return type(self)(self.expr)
 
 
 class Variable(LambdaTerm):
     """Variable in lambda calculus: alphabetic character(s) that represent abstractions."""
+    VALID = list(ascii_letters) + Grammar.SUBS
 
     @staticmethod
     def check_grammar(expr):
         """Variable format: <alpha> (alphabetic character(s))."""
-        return Grammar.preprocess(expr).isalpha() and "λ" not in expr
+        return all(char in Variable.VALID for char in Grammar.preprocess(expr))
 
     def tokenize(self):
         """Variables are not tokenizable, so do nothing."""
 
     def alpha_convert(self, var, new_arg):
         self.check_args(var, new_arg, mode="alpha")
-        if var == self:
+        if self.expr == var.expr:
             self.expr = new_arg.expr
 
     def beta_reduce(self, var, new_term):
         """Beta conversion is the same as alpha conversion for Variables."""
         self.check_args(var, new_term, mode="beta")
-        if var == self:
-            return new_term.copy()
+        if self.expr == var.expr:
+            self.expr = new_term.expr
+            return copy(new_term)
         return self
 
     def generate_bound(self):
@@ -277,22 +304,6 @@ class Abstraction(LambdaTerm):
     def get_body(expr):
         """Gets string repr of Abstraction body from expr. Assumes grammar check has been run."""
         return expr[expr.index(".") + 1:]
-
-    def get_new_arg(self, var, new_term):
-        """Returns the next term that isn't var nor arg and occurs in neither body nor new_term."""
-        arg, body = self.nodes
-
-        body_vars = body.bound if body.tokenizable else [body]
-        new_term_vars = new_term.bound if new_term.tokenizable else [new_term]
-
-        already_used = [var, arg] + body_vars + new_term_vars
-
-        subscript = 0
-        while True:
-            new_arg = Grammar.subscript(var, subscript)
-            if new_arg not in already_used:
-                return new_arg
-            subscript += 1
 
     @staticmethod
     def check_grammar(expr):
@@ -348,20 +359,20 @@ class Abstraction(LambdaTerm):
         arg, body = self.nodes
 
         if var != arg:
-            print(arg, var, new_term, body, body.bound)
-            if arg in body.bound:
-                new_arg = self.get_new_arg(var, new_term)
-                arg.alpha_convert(arg, new_arg)
-                body.alpha_convert(arg, new_arg)
+            if var not in body.bound and new_term in body.bound:
+                new_term.alpha_convert(new_term, self.get_new_arg(var, new_term))
 
             body = body.beta_reduce(var, new_term)
+            body.update_expr()
             self.nodes = [arg, body]
 
-        return body.copy()
+        return copy(body)
 
     def generate_bound(self):
         arg, body = self.nodes
-        self.bound = body.bound + [arg]
+        self.bound += deepcopy(body.bound) + [copy(arg)]
+
+        self.propagate_bound()
 
     def update_expr(self):
         arg, body = self.nodes
@@ -426,12 +437,19 @@ class Application(LambdaTerm):
     def beta_reduce(self, var, new_term):
         """Beta conversion is applied the same way as alpha conversion for Applications."""
         self.check_args(var, new_term, mode="beta")
+
+        if var in self.bound:
+            new_term.alpha_convert(new_term, self.get_new_arg(var, new_term))
+
         self.nodes = [node.beta_reduce(var, new_term) for node in self.nodes]
+        self.update_expr()
         return self
 
     def generate_bound(self):
         left, right = self.nodes
-        self.bound = left.bound + right.bound
+        self.bound += deepcopy(left.bound) + deepcopy(right.bound)
+
+        self.propagate_bound()
 
     def update_expr(self):
         left, right = self.nodes
@@ -449,7 +467,6 @@ class Application(LambdaTerm):
         """Applications are the only LambdaTerm that can be leftmost. An Application is leftmost if its left child is
         an Abstraction.
         """
-        assert self.nodes, "[internal] call step_tokenize before querying nodes"
         return isinstance(self.nodes[0], Abstraction)
 
 
@@ -461,7 +478,7 @@ class NormalOrderReducer:
         self.tree = LambdaTerm.generate_tree(expr)
 
     def alpha_convert(self, var, new_arg):
-        assert isinstance(self.tree, Abstraction), "top-level expr is not an Application"
+        assert isinstance(self.tree, Abstraction), "top-level expr is not an Abstraction"
 
         arg, body = self.tree.nodes
 
@@ -494,9 +511,6 @@ class NormalOrderReducer:
 
 
 if __name__ == "__main__":
-    import time
-    s = time.time()
-    syntax_tree = NormalOrderReducer("(λy.λx.x y) x")
-    print(syntax_tree, "\n")
-    print(syntax_tree.beta_reduce())
-    print(time.time() - s)
+    syntax_tree = NormalOrderReducer("(λy.y x) x")
+    print("TREE:", syntax_tree)
+    print("\nFINAL:", syntax_tree.beta_reduce())

@@ -2,6 +2,7 @@ import unittest
 
 from interpreter.pure.lexical import Abstraction, Application, Builtin, LambdaTerm, NormalOrderReducer, Variable
 
+
 class BuiltinTestCase(unittest.TestCase):
 
     def test_check_grammar(self):
