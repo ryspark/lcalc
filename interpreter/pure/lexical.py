@@ -45,7 +45,7 @@ class Grammar(ABC):
 
     @staticmethod
     @abstractmethod
-    def check_grammar(expr):
+    def check_grammar(expr, preprocess=True):
         """"This method should check expr's top-level grammar and return whether or not it is valid. It should also
         raise a SyntaxError if expr's top-level grammar is similar to the accepted grammar but syntactically invalid.
         """
@@ -122,7 +122,7 @@ class Builtin(Grammar):
     TOKENS = ["λ", ".", "(", ")"]
 
     @staticmethod
-    def check_grammar(expr):
+    def check_grammar(expr, preprocess=True):
         if len(expr) == 1:
             return expr in Builtin.TOKENS
         if all(char in Builtin.TOKENS for char in expr):
@@ -163,7 +163,9 @@ class LambdaTerm(Grammar):
     @abstractmethod
     def beta_reduce(self, var, new_term):
         """Given a redex (λvar.M)new_term, this method substitutes all free occurences of x replaced by new_term. As
-        with alpha_convert, this method is used in NormalOrderReducer.
+        with alpha_convert, this method is used in NormalOrderReducer; however, unlike alpha_convert, it also
+        returns the beta-reduced expr (needed because types will change during reduction; e.g., Abstractions become
+        Applications after substitution).
         """
 
     @abstractmethod
@@ -190,8 +192,6 @@ class LambdaTerm(Grammar):
     @staticmethod
     def generate_tree(expr):
         """Converts expr to the proper LambdaTerm type, raises SyntaxError if expr is not a valid LambdaType."""
-        if not isinstance(expr, str):
-            expr = "".join(char for char in expr)
         for cls in LambdaTerm.__subclasses__():
             subclass = globals()[cls.__name__]
             if subclass.check_grammar(expr):
@@ -212,15 +212,6 @@ class LambdaTerm(Grammar):
                 return None
 
         return find_outer_redex(self)
-
-    def check_args(self, var, new_arg, mode):
-        """Checks alpha/beta reduction args."""
-        if not isinstance(var, Variable) or not isinstance(new_arg, Variable if mode == "alpha" else LambdaTerm):
-            raise ValueError("both var and new_arg must be of type Variable")
-        if not isinstance(self, Variable) and not self.nodes:
-            raise ValueError("call tokenize before using check_args")
-        if new_arg in self.bound and mode == "alpha":
-            raise ValueError(f"'{new_arg.expr}' is bound in '{self.expr}'")
 
     def get_new_arg(self, var, new_term):
         """Returns the next term that isn't var nor arg and occurs in neither body nor new_term."""
@@ -257,21 +248,20 @@ class Variable(LambdaTerm):
     VALID = list(ascii_letters) + Grammar.SUBS
 
     @staticmethod
-    def check_grammar(expr):
-        """Variable format: <alpha> (alphabetic character(s))."""
-        return all(char in Variable.VALID for char in Grammar.preprocess(expr))
+    def check_grammar(expr, preprocess=True):
+        if preprocess:
+            expr = Grammar.preprocess(expr)
+        return all(char in Variable.VALID for char in expr)
 
     def tokenize(self):
         """Variables are not tokenizable, so do nothing."""
 
     def alpha_convert(self, var, new_arg):
-        self.check_args(var, new_arg, mode="alpha")
         if self.expr == var.expr:
             self.expr = new_arg.expr
 
     def beta_reduce(self, var, new_term):
         """Beta conversion is the same as alpha conversion for Variables."""
-        self.check_args(var, new_term, mode="beta")
         if self.expr == var.expr:
             self.expr = new_term.expr
             return copy(new_term)
@@ -306,14 +296,15 @@ class Abstraction(LambdaTerm):
         return expr[expr.index(".") + 1:]
 
     @staticmethod
-    def check_grammar(expr):
+    def check_grammar(expr, preprocess=True):
         """This implementation of Abstraction differs from the actual lambda calculus definition.
         - Actual Abstraction format: "λ" <Variable> "." <LambdaTerm> (optional parentheses not shown)
         - Accepted Abstraction format: "λ" <Variable> "." <anything> (optional parentheses not shown)
 
         The reason for this discrepancy is to delegate recursive token parsing to LambdaAST.
         """
-        expr = Grammar.preprocess(expr)
+        if preprocess:
+            expr = Grammar.preprocess(expr)
 
         # check 1: are required Builtins (λ, .) correctly placed and matched within expr?
         bind = expr.find("λ")
@@ -348,14 +339,13 @@ class Abstraction(LambdaTerm):
         self.nodes = [arg, body]
 
     def alpha_convert(self, var, new_arg):
-        self.check_args(var, new_arg, mode="alpha")
         arg, body = self.nodes
-
-        if var != arg and new_arg not in self.bound:
+        if new_arg in self.bound:
+            raise ValueError(f"'{new_arg.expr}' is bound in '{self.expr}'")
+        elif var != arg:
             body.alpha_convert(var, new_arg)
 
     def beta_reduce(self, var, new_term):
-        self.check_args(var, new_term, mode="beta")
         arg, body = self.nodes
 
         if var != arg:
@@ -365,7 +355,6 @@ class Abstraction(LambdaTerm):
             body = body.beta_reduce(var, new_term)
             body.update_expr()
             self.nodes = [arg, body]
-
         return copy(body)
 
     def generate_bound(self):
@@ -394,12 +383,13 @@ class Application(LambdaTerm):
     """Application of arbitrary number of Abstractions/Variables."""
 
     @staticmethod
-    def check_grammar(expr):
+    def check_grammar(expr, preprocess=True):
         """This implementation of Application differs from the actual lambda calculus definition.
         - Actual Application format: <LambdaTerm>+ (grouped by parentheses and spaces)
         - Accepted Application format: anything but other LambdaTerms, grouped correctly by parens/spaces
         """
-        expr = Grammar.preprocess(expr)
+        if preprocess:
+            expr = Grammar.preprocess(expr)
 
         # check 1: are parentheses balanced?
         if not Grammar.are_parens_balanced(expr):
@@ -417,18 +407,20 @@ class Application(LambdaTerm):
     def tokenize(self):
         start_right_child = None
         for idx in range(1, len(self.expr)):
-            if self.expr.count("(", 0, idx) == self.expr.count(")", 0, idx):
+            parens_match = self.expr.count("(", 0, idx) == self.expr.count(")", 0, idx)
+            multichar_var = Variable.check_grammar(self.expr[:idx + 1], preprocess=False)
+
+            if parens_match and not multichar_var:
                 start_right_child = idx
                 break
 
         left_child, right_child = self.expr[:start_right_child], self.expr[start_right_child:]
         self.nodes = [LambdaTerm.generate_tree(left_child), LambdaTerm.generate_tree(right_child)]
 
-        if any(node.expr == self.expr for node in self.nodes):
-            raise SyntaxError(f"'{self.expr}' is syntactically invalid")
-
     def alpha_convert(self, var, new_arg):
-        self.check_args(var, new_arg, mode="alpha")
+        if new_arg in self.bound:
+            raise ValueError(f"'{new_arg.expr}' is bound in '{self.expr}'")
+
         left, right = self.nodes
 
         left.alpha_convert(var, new_arg)
@@ -436,13 +428,12 @@ class Application(LambdaTerm):
 
     def beta_reduce(self, var, new_term):
         """Beta conversion is applied the same way as alpha conversion for Applications."""
-        self.check_args(var, new_term, mode="beta")
-
         if var in self.bound:
             new_term.alpha_convert(new_term, self.get_new_arg(var, new_term))
 
         self.nodes = [node.beta_reduce(var, new_term) for node in self.nodes]
         self.update_expr()
+
         return self
 
     def generate_bound(self):
@@ -477,17 +468,6 @@ class NormalOrderReducer:
         self.expr = expr
         self.tree = LambdaTerm.generate_tree(expr)
 
-    def alpha_convert(self, var, new_arg):
-        assert isinstance(self.tree, Abstraction), "top-level expr is not an Abstraction"
-
-        arg, body = self.tree.nodes
-
-        body.alpha_convert(var, new_arg)  # alpha-convert M
-        arg.alpha_convert(var, new_arg)   # rename λvar.M -> λnew_arg.M
-
-        self.tree.update_expr()
-        self.expr = self.tree.expr
-
     def beta_reduce(self):
         reduced = None
         redex = self.tree.left_outer_redex()
@@ -511,6 +491,7 @@ class NormalOrderReducer:
 
 
 if __name__ == "__main__":
-    syntax_tree = NormalOrderReducer("(λy.y x) x")
+    # syntax_tree = NormalOrderReducer("(λy.λx.y x) x")
+    syntax_tree = NormalOrderReducer("var x")
     print("TREE:", syntax_tree)
     print("\nFINAL:", syntax_tree.beta_reduce())
