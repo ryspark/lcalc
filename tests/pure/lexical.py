@@ -1,6 +1,6 @@
 import unittest
 
-from interpreter.pure.lexical import Abstraction, Application, Builtin, LambdaTerm, NormalOrderReducer, Variable
+from interpreter.pure.lexical import Abstraction, Application, Builtin, LambdaTerm, Variable
 
 
 class BuiltinTestCase(unittest.TestCase):
@@ -54,7 +54,8 @@ class LambdaTermTestCase(unittest.TestCase):
             "(λz.(λz.y (y z)) (λv.v x))": LambdaTerm.generate_tree("(λz.y (y z)) (λv.v x)")
         }
         for case, result in cases.items():
-            self.assertEqual(result, LambdaTerm.generate_tree(case).left_outer_redex(), case)
+            tree = LambdaTerm.generate_tree(case)
+            self.assertEqual(result, tree.get(tree.left_outer_redex()), case)
 
 
 class VariableTestCase(unittest.TestCase):
@@ -128,11 +129,11 @@ class ApplicationTestCase(unittest.TestCase):
             "x (y)": [Variable("x"), Variable("y")],
             "x(λx.y)": [Variable("x"), Abstraction("λx.y")],
             "x λx.y": [Variable("x"), Abstraction("λx.y")],
-            "(λx.x)y x": [Abstraction("λx.x"), Application("y x")],
-            "(x y) y (x y)": [Application("x y"), Application("y (x y)")],
+            "(λx.x)y x": [Application("(λx.x)y"), Variable("x")],
+            "(x y) y (x y)": [Application("(x y) y"), Application("(x y)")],
             "(z λx.λy.z) (x y)": [Application("z λx.λy.z"), Application("x y")],
             "((z) (λx.λy.z)) ((x) (y))": [Application("(z) (λx.λy.z)"), Application("(x) (y)")],
-            "((λx.x) λx.x) λxy.y λabc.a": [Application("(λx.x) λx.x"), Abstraction("λxy.y λabc.a")],
+            "((λx.x) λx.x) λxy.y λabc.a": [Application("((λx.x) λx.x)"), Abstraction("λxy.y λabc.a")],
             "(x) (λxy.(λx.(y x)) λa.λx.y x)": [Variable("x"), Abstraction("λxy.(λx.(y x)) λa.λx.y x")],
             "((λx.x) λx.x) (λxy.y x)": [Application("(λx.x) λx.x"), Abstraction("λxy.y x")],
             "((λx.x) λx.x) (λxy.(y x))": [Application("(λx.x) λx.x"), Abstraction("λxy.(y x)")],
@@ -145,12 +146,6 @@ class ApplicationTestCase(unittest.TestCase):
         }
         for case, expected in cases.items():
             self.assertEqual(expected, Application(case).nodes, case)
-
-
-class NormalOrderReducerTestCase(unittest.TestCase):
-
-    def test_beta_reduce(self):
-        pass
 
 
 if __name__ == '__main__':

@@ -4,6 +4,7 @@ The `pure` directory contains pure lambda calculus AST generation and parsing- n
 
 Formally, pure lambda calculus can be defined as
 
+```
 <λ-term> ::= <λ-term>                   ; "variable"
                                         ; - must be alphabetic character(s) (by convention, lowercase)
            | "λ" <λ-term> "." <λ-term>  ; "abstraction"
@@ -11,6 +12,7 @@ Formally, pure lambda calculus can be defined as
                                         ; - abstraction bodies are greedy: λx.x y = λx.(x y) != (λx.x) (y)
            | <λ-term> <λ-term>          ; "application"
                                         ; - associating by left: abcd = ((((a) b) c) d)
+```
 
 Note that applications and abstractions are the only non-terminals in lambda calculus.
 
@@ -110,11 +112,6 @@ class Grammar(ABC):
     def __repr__(self):
         return f"{self._cls}('{self.expr}')"
 
-    def __eq__(self, other):
-        if isinstance(other, Grammar):
-            return all(attr == other_attr for attr, other_attr in zip(vars(self).values(), vars(other).values()))
-        return False
-
 
 class Builtin(Grammar):
     """Built-in lambda calculus tokens: 'λ', '.', '(', ')' """
@@ -140,7 +137,8 @@ class LambdaTerm(Grammar):
         of this method that could possibly go wrong is the recursion, so no need for a test here.
         """
         super().__init__(expr)
-        self.bound = []
+        self._bound = []
+        self._flattened = {}
 
         self.tokenize()
         self.generate_bound()
@@ -154,15 +152,18 @@ class LambdaTerm(Grammar):
 
     @abstractmethod
     def alpha_convert(self, var, new_arg):
-        """Given an abstraction λvar.M, this method renames all free occurences of var in M to new_arg. Proper usage of
-        this method is provided in NormalOrderReducer. Assumes var is a Variable and new_arg a LambdaTerm, and should
-        not update self.expr with alpha-converted expr (unless self is Variable).
+        """Given an abstraction λvar.M, this method returns term with all free occurences of var in M renamed to
+        new_arg. Proper usage of this method is provided in beta_reduce. Assumes var is a Variable and new_arg a
+        LambdaTerm, and should not update self.expr with alpha-converted expr (unless self is Variable).
         """
 
     @abstractmethod
-    def beta_reduce(self, var, new_term):
-        """Given a redex (λvar.M)new_term, this method substitutes all free occurences of x replaced by new_term. As
-        with alpha_convert, this method is used in NormalOrderReducer. Should call update_expr
+    def sub(self, var, new_term):
+        """Given a redex (λvar.M)new_term, this method returns substitution of all free occurences of x with new_term.
+        As with alpha_convert, this method is used in beta_reduce as a helper. Should call update_expr. Note that
+        though this method does not perform a deep copy of self before returning, so the substituted and original nodes
+        reference the same objects. However, beta_reduce in NormalOrderReducer should handle this properly and eliminate
+        multiple references.
         """
 
     @abstractmethod
@@ -186,29 +187,55 @@ class LambdaTerm(Grammar):
     def is_leftmost(self):
         """Whether or not this object is a leftmost node in a syntax tree. Only works if tokenize has been run."""
 
-    @staticmethod
-    def generate_tree(expr):
+    @property
+    def flattened(self):
+        """Gets dict with keys being the Variables in self and the values being the paths to those Variables."""
+        def get_flattened(node, path, flattened):
+            if not node.tokenizable:
+                if node in flattened:
+                    flattened[node].append(path)
+                else:
+                    flattened[node] = [path]
+            else:
+                for idx, sub_node in enumerate(node.nodes):
+                    get_flattened(sub_node, path + [idx], flattened)
+
+        if not self._flattened:
+            get_flattened(self, [], self._flattened)
+        return self._flattened
+
+    @classmethod
+    def generate_tree(cls, expr, preprocess=True):
         """Converts expr to the proper LambdaTerm type, raises SyntaxError if expr is not a valid LambdaType."""
-        for cls in LambdaTerm.__subclasses__():
-            subclass = globals()[cls.__name__]
-            if subclass.check_grammar(expr):
+        for subclass_name in cls.__subclasses__():
+            subclass = globals()[subclass_name.__name__]
+            if subclass.check_grammar(expr, preprocess):
                 return subclass(expr)
         raise SyntaxError(f"'{expr}' not valid LambdaTerm grammar")
 
+    @classmethod
+    def infer_type(cls, expr, preprocess=True):
+        """Similar to generate_tree, but instead of generating a tree, just checks grammar of all subclasses."""
+        for subclass_name in cls.__subclasses__():
+            subclass = globals()[subclass_name.__name__]
+            if subclass.check_grammar(expr, preprocess):
+                return subclass
+
     def left_outer_redex(self):
-        """Returns the leftmost outermost redex, if there is one. The first outermost node is returned without checking
-        if it is leftmost, but generally first outermost node == leftmost outermost node.
+        """Returns the index path to the leftmost outermost redex, if there is one. The first outermost node is returned
+        without checking if it is leftmost, but generally first outermost node == leftmost outermost node.
         """
 
-        def find_outer_redex(tree):
+        def find_outer_redex(tree, path):
             if tree.is_leftmost:
-                return tree
+                return path
             try:
-                return next(filter(lambda node: node, (find_outer_redex(node) for node in tree.nodes)))
+                recursed = (find_outer_redex(node, path + [idx]) for idx, node in enumerate(tree.nodes))
+                return next(filter(lambda node: node, recursed))
             except StopIteration:
                 return None
 
-        return find_outer_redex(self)
+        return find_outer_redex(self, [])
 
     def get_new_arg(self, var, new_term):
         """Returns the next term that isn't var nor arg and occurs in neither body nor new_term."""
@@ -217,7 +244,7 @@ class LambdaTerm(Grammar):
             if node.tokenizable:
                 already_used.append(node)
             else:
-                already_used.extend(node.bound)
+                already_used.extend(node._bound)
 
         subscript = 0
         while True:
@@ -230,20 +257,49 @@ class LambdaTerm(Grammar):
         """Propagates self.bound one level down. Called from generate_bound."""
         for node in self.nodes:
             if node.tokenizable:
-                node.bound += self.bound
+                node._bound += self._bound
+
+    def get(self, idxs):
+        """Gets node at position specified by idxs. idxs=[] will return self."""
+        if not idxs:
+            return self
+
+        this, *others = idxs
+        if not others:
+            assert this in (0, 1), f"idx must be 0 or 1, got {this}"
+            return self.nodes[this]
+        else:
+            return self.nodes[this].get(others)
+
+    def set(self, idxs, node):
+        """Sets node at positions specified by idxs. idxs=[] will raise an error."""
+        if not idxs:
+            raise ValueError("idxs cannot be empty")
+
+        this, *others = idxs
+        if not others:
+            assert this in (0, 1), f"idx must be 0 or 1, got {this}"
+            self.nodes[this] = node
+            self.update_expr()
+        else:
+            self.nodes[this].set(others, node)
 
     def __str__(self):
         return self.display()
 
     def __eq__(self, other):
-        """Compares by attr but excludes 'bound' attr."""
+        """Compares by attr but excludes r"_.*" attrs."""
         if not isinstance(other, LambdaTerm):
             return False
 
         for attr in vars(self):
-            if attr != "bound" and vars(self)[attr] != vars(other)[attr]:
+            if not attr.startswith("_") and vars(self)[attr] != vars(other)[attr]:
                 return False
         return True
+
+    def __hash__(self):
+        """Needed for _flattened dict, where Variables are keys."""
+        return hash((val for attr, val in vars(self).items() if not attr.startswith("_")))
 
 
 class Variable(LambdaTerm):
@@ -261,11 +317,12 @@ class Variable(LambdaTerm):
 
     def alpha_convert(self, var, new_arg):
         if self.expr == var.expr:
-            self.expr = new_arg.expr
+            return LambdaTerm.generate_tree(new_arg.expr)  # type conversion might occur
+        return Variable(self.expr)
 
-    def beta_reduce(self, var, new_term):
+    def sub(self, var, new_term):
         """Beta conversion is the same as alpha conversion for Variables."""
-        self.alpha_convert(var, new_term)
+        return self.alpha_convert(var, new_term)
 
     def generate_bound(self):
         """Variables have no nodes and therefore no bound variables."""
@@ -284,16 +341,6 @@ class Variable(LambdaTerm):
 
 class Abstraction(LambdaTerm):
     """Abstraction: the basic datatype in lambda calculus."""
-
-    @staticmethod
-    def get_arg(expr):
-        """Gets string repr of Abstraction arg from expr. Assumes grammar check has been run."""
-        return expr[expr.index("λ") + 1:expr.index(".")]
-
-    @staticmethod
-    def get_body(expr):
-        """Gets string repr of Abstraction body from expr. Assumes grammar check has been run."""
-        return expr[expr.index(".") + 1:]
 
     @staticmethod
     def check_grammar(expr, preprocess=True):
@@ -320,47 +367,49 @@ class Abstraction(LambdaTerm):
             return False
 
         # check 2: is bound variable valid?
-        arg = Abstraction.get_arg(expr)
-        if not Variable.check_grammar(arg):
+        arg = expr[expr.index("λ") + 1:expr.index(".")]
+        if not Variable.check_grammar(arg, False):
             return False
         elif any(Builtin.check_grammar(char) for char in arg):
             raise SyntaxError(f"'{expr}' contains an illegal bound variable")
 
         # check 3: is body valid?
-        body = Abstraction.get_body(expr)
+        body = expr[expr.index(".") + 1:]
         if len(body) == 0 or all(Builtin.check_grammar(char) for char in body):
             raise SyntaxError(f"'{expr}' contains an illegal abstraction body")
         return True
 
     def tokenize(self):
-        arg = Variable(Abstraction.get_arg(self.expr))
-        body = LambdaTerm.generate_tree(Abstraction.get_body(self.expr))
+        arg = Variable(self.expr[self.expr.index("λ") + 1:self.expr.index(".")])
+        body = LambdaTerm.generate_tree(self.expr[self.expr.index(".") + 1:])
 
         self.nodes = [arg, body]
 
     def alpha_convert(self, var, new_arg):
         arg, body = self.nodes
 
-        if new_arg in self.bound:
+        if new_arg in self._bound:
             raise ValueError(f"'{new_arg.expr}' is bound in '{self.expr}'")
         elif var != arg:
-            body.alpha_convert(var, new_arg)
+            self.nodes[self.nodes.index(body)] = body.alpha_convert(var, new_arg)
 
-    def beta_reduce(self, var, new_term):
+        return self
+
+    def sub(self, var, new_term):
         arg, body = self.nodes
 
         if var != arg:
-            if var not in body.bound and new_term in body.bound:
-                new_term.alpha_convert(new_term, self.get_new_arg(var, new_term))
+            if var not in body._bound and new_term in body._bound:
+                new_term = new_term.alpha_convert(new_term, self.get_new_arg(var, new_term))
 
-            body.beta_reduce(var, new_term)
-            self.nodes = [arg, body]
+            self.nodes = [arg, body.sub(var, new_term)]
 
         self.update_expr()
+        return self
 
     def generate_bound(self):
         arg, body = self.nodes
-        self.bound += body.bound + [arg]
+        self._bound += body._bound + [arg]
 
         self.propagate_bound()
 
@@ -402,46 +451,50 @@ class Application(LambdaTerm):
 
         # check 3: is expr an Builtin, Variable, or Abstraction?
         is_builtin = Builtin.check_grammar(expr)
-        is_other_lambdaterm = Variable.check_grammar(expr) or Abstraction.check_grammar(expr)
+        is_other_lambdaterm = Variable.check_grammar(expr, False) or Abstraction.check_grammar(expr, False)
         return not is_builtin and not is_other_lambdaterm
 
     def tokenize(self):
-        start_right_child = None
-        for idx in range(1, len(self.expr)):
-            parens_match = self.expr.count("(", 0, idx) == self.expr.count(")", 0, idx)
-            multichar_var = Variable.check_grammar(self.expr[:idx + 1], preprocess=False)
+        bind_pos = -1
+        for idx, char in enumerate(self.expr):
+            if char == "λ" and self.expr.count("(", 0, idx + 1) == self.expr.count(")", 0, idx + 1):
+                bind_pos = idx
+                break
 
-            if parens_match and not multichar_var:
+        for idx in range(len(self.expr) - 1, 0, -1):
+            to_iterate = self.expr[:idx]
+            paren_balance = to_iterate.count("(") == to_iterate.count(")")
+            past_bind = bind_pos != -1 and idx > bind_pos
+
+            if paren_balance and not past_bind and LambdaTerm.infer_type(to_iterate, False) is not None:
                 start_right_child = idx
                 break
+        else:
+            raise SyntaxError(f"{self.expr} is not valid LambdaTerm grammar")
 
         left_child, right_child = self.expr[:start_right_child], self.expr[start_right_child:]
         self.nodes = [LambdaTerm.generate_tree(left_child), LambdaTerm.generate_tree(right_child)]
 
     def alpha_convert(self, var, new_arg):
-        if new_arg in self.bound:
+        if new_arg in self._bound:
             raise ValueError(f"'{new_arg.expr}' is bound in '{self.expr}'")
 
-        left, right = self.nodes
+        self.nodes = [node.alpha_convert(var, new_arg) for node in self.nodes]
+        return self
 
-        left.alpha_convert(var, new_arg)
-        right.alpha_convert(var, new_arg)
-
-    def beta_reduce(self, var, new_term):
+    def sub(self, var, new_term):
         """Beta conversion is applied the same way as alpha conversion for Applications."""
-        if var in self.bound:
+        if var in self._bound:
             new_term.alpha_convert(new_term, self.get_new_arg(var, new_term))
 
-        left, right = self.nodes
-
-        left.beta_reduce(var, new_term)
-        right.beta_reduce(var, new_term)
-
+        self.nodes = [node.sub(var, new_term) for node in self.nodes]
         self.update_expr()
+
+        return self
 
     def generate_bound(self):
         left, right = self.nodes
-        self.bound += left.bound + right.bound
+        self._bound += left._bound + right._bound
 
         self.propagate_bound()
 
@@ -466,29 +519,55 @@ class Application(LambdaTerm):
 
 
 class NormalOrderReducer:
-    """Implements normal-order beta reduction of a syntax tree."""
+    """Implements normal-order beta reduction of a syntax tree. Used instead of LambdaTerm in lang."""
 
-    def __init__(self, expr):
+    def __init__(self, expr, generate=True, reduce=False):
         self.expr = expr
-        self.tree = LambdaTerm.generate_tree(expr)
+        self.generated = False
+        self.reduced = False
+
+        if generate:
+            self.generate_tree()
+        if reduce:
+            self.beta_reduce()
+
+    def generate_tree(self):
+        """Generates syntax tree. Thin wrapper around LambdaTerm.generate_tree."""
+        self.tree = LambdaTerm.generate_tree(self.expr)
+        self.generated = True
 
     def beta_reduce(self):
         """In-place normal-order beta reduction of self.tree."""
-        redex = self.tree.left_outer_redex()
+        redex_path = self.tree.left_outer_redex()
 
-        while redex is not None:
+        while redex_path is not None:
+            redex = self.tree.get(redex_path)
+
             abstraction, new_term = redex.nodes
             arg, body = abstraction.nodes
 
-            body.beta_reduce(arg, new_term)
-            self.tree = body
+            self.set(redex_path, body.sub(arg, new_term))
 
-            redex = self.tree.left_outer_redex()
+            redex_path = self.tree.left_outer_redex()
 
         self.tree.expr = Grammar.preprocess(self.tree.expr)  # for greater readability
+        self.reduced = True
+
+    def set(self, idxs, node):
+        """Sets self.tree with node at position specified by idxs. An empty list will replace self.tree with node."""
+        try:
+            self.tree.set(idxs, node)
+        except ValueError:
+            self.tree = node
+        self.tree.update_expr()
 
     def __repr__(self):
         return repr(self.tree)
 
     def __str__(self):
         return self.tree.display()
+
+
+if __name__ == "__main__":
+    print(LambdaTerm.generate_tree("((λx.x) λx.x) λxy.y λabc.a"))
+    # print(LambdaTerm.generate_tree("(z λx.λy.z) (x y)"))
