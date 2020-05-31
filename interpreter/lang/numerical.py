@@ -5,13 +5,13 @@ everything pure as possible.
 Source: https://en.wikipedia.org/wiki/Church_encoding#Calculation_with_Church_numerals
 """
 
-from interpreter.pure.lexical import Abstraction
 
-def to_church_numeral(number):
+def church_numeral(number):
+    """Returns string expr of number in lambda calculus."""
     assert isinstance(number, int) and number >= 0, "only natural numbers supported"
 
-    header = "λf.λx."
+    header = "(λf.λx."
     composed = "f (" * number
-    application = "x" + ")" * composed.count("(")
+    application = "x" + ")" * composed.count("(") + ")"
 
-    return Abstraction(header + composed + application)
+    return header + composed + application
