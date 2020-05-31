@@ -5,7 +5,7 @@
 SUCC  := λn.λf.λx.f (n f x)
 PRED  := λn.λf.λx.n (λg.λh.h (g f)) (λu.x) (λu.u)
 
-+     := λm.λn SUCC m
++     := λm.λn.n SUCC m
 -     := λm.λn.n PRED m
 *     := λm.λn.λf.m (n f)
-**    := λm.λn n m
+**    := λm.λn.n m
