@@ -111,6 +111,9 @@ class Grammar(ABC):
     def __repr__(self):
         return f"{self._cls}('{self.expr}')"
 
+    def __eq__(self, other):
+        return type(self) == type(other) and self.expr == other.expr
+
 
 class Builtin(Grammar):
     """Built-in lambda calculus tokens: 'λ', '.', '(', ')' """
@@ -275,6 +278,9 @@ class LambdaTerm(Grammar):
         if not idxs:
             raise ValueError("idxs cannot be empty")
 
+        if isinstance(node, Abstraction):
+            node.expr = f"({node.expr})"
+
         this, *others = idxs
         if not others:
             assert this in (0, 1), f"idx must be 0 or 1, got {this}"
@@ -286,24 +292,14 @@ class LambdaTerm(Grammar):
     def __str__(self):
         return self.display()
 
-    def __eq__(self, other):
-        """Compares by attr but excludes r"_.*" attrs."""
-        if not isinstance(other, LambdaTerm):
-            return False
-
-        for attr in vars(self):
-            if not attr in ("bound", "_flattened") and vars(self)[attr] != vars(other)[attr]:
-                return False
-        return True
-
     def __hash__(self):
         """Needed for _flattened dict, where Variables are keys."""
-        return hash((val for attr, val in vars(self).items() if not attr.startswith("_")))
+        return hash(self.expr)
 
 
 class Variable(LambdaTerm):
-    """Variable in lambda calculus: alphabetic character(s) that represent abstractions."""
-    INVALID = Builtin.TOKENS + [" "] + list(str(digit) for digit in range(10))
+    """Variable in lambda calculus: character(s) that represent abstractions."""
+    INVALID = Grammar.illegal + Builtin.TOKENS + list(map(str, range(10))) + [" "]
 
     @staticmethod
     def check_grammar(expr, preprocess=True):
@@ -417,7 +413,11 @@ class Abstraction(LambdaTerm):
         arg.update_expr()
         body.update_expr()
 
-        self.expr = f"(λ{arg.expr}.{body.expr})"
+        self.expr = f"λ{arg.expr}."
+        if isinstance(body, Application):
+            self.expr += f"({body.expr})"
+        else:
+            self.expr += f"{body.expr}"
 
     @property
     def tokenizable(self):
@@ -460,16 +460,19 @@ class Application(LambdaTerm):
                 bind_pos = idx
                 break
 
+        start_right_child = None
         for idx in range(len(self.expr) - 1, 0, -1):
             to_iterate = self.expr[:idx]
+
             paren_balance = to_iterate.count("(") == to_iterate.count(")")
             past_bind = bind_pos != -1 and idx > bind_pos
+            multichar_var = Variable.check_grammar(self.expr[idx - 1:])
 
-            if paren_balance and not past_bind and LambdaTerm.infer_type(to_iterate, False) is not None:
+            initial_tests = paren_balance and not past_bind and not multichar_var
+
+            if initial_tests and LambdaTerm.infer_type(to_iterate, False) is not None:
                 start_right_child = idx
                 break
-        else:
-            raise SyntaxError(f"{self.expr} is not valid LambdaTerm grammar")
 
         left_child, right_child = self.expr[:start_right_child], self.expr[start_right_child:]
         self.nodes = [LambdaTerm.generate_tree(left_child), LambdaTerm.generate_tree(right_child)]
@@ -503,7 +506,11 @@ class Application(LambdaTerm):
         left.update_expr()
         right.update_expr()
 
-        self.expr = f"(({left.expr}) ({right.expr}))"
+        self.expr = f"{left.expr} "
+        if not right.tokenizable:
+            self.expr += f"{right.expr}"
+        else:
+            self.expr += f"({right.expr})"
 
     @property
     def tokenizable(self):
@@ -521,7 +528,7 @@ class NormalOrderReducer:
     """Implements normal-order beta reduction of a syntax tree. Used instead of LambdaTerm in lang."""
 
     def __init__(self, expr, generate=True, reduce=False):
-        self.expr = expr
+        self._expr = expr
         self.tree = Variable("<null>")  # placeholder until generate_tree is called
 
         self.generated = False
@@ -534,7 +541,7 @@ class NormalOrderReducer:
 
     def generate_tree(self):
         """Generates syntax tree. Thin wrapper around LambdaTerm.generate_tree."""
-        self.tree = LambdaTerm.generate_tree(self.expr)
+        self.tree = LambdaTerm.generate_tree(self._expr)
         self.generated = True
 
     def beta_reduce(self):
@@ -567,8 +574,3 @@ class NormalOrderReducer:
 
     def __str__(self):
         return self.tree.display()
-
-
-if __name__ == "__main__":
-    print(LambdaTerm.generate_tree("((λx.x) λx.x) λxy.y λabc.a"))
-    # print(LambdaTerm.generate_tree("(z λx.λy.z) (x y)"))

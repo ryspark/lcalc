@@ -125,6 +125,7 @@ class ApplicationTestCase(unittest.TestCase):
         cases = {
             "x y": [Variable("x"), Variable("y")],
             "var y": [Variable("var"), Variable("y")],
+            "y var": [Variable("y"), Variable("var")],
             "(x) y": [Variable("x"), Variable("y")],
             "x (y)": [Variable("x"), Variable("y")],
             "x(λx.y)": [Variable("x"), Abstraction("λx.y")],
