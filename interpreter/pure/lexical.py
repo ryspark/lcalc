@@ -30,7 +30,6 @@ means that function application must be separated by spaces or parentheses.
 """
 
 from abc import abstractmethod, ABC
-from string import ascii_letters
 
 
 class Grammar(ABC):
@@ -137,7 +136,7 @@ class LambdaTerm(Grammar):
         of this method that could possibly go wrong is the recursion, so no need for a test here.
         """
         super().__init__(expr)
-        self._bound = []
+        self.bound = []
         self._flattened = {}
 
         self.tokenize()
@@ -244,7 +243,7 @@ class LambdaTerm(Grammar):
             if node.tokenizable:
                 already_used.append(node)
             else:
-                already_used.extend(node._bound)
+                already_used.extend(node.bound)
 
         subscript = 0
         while True:
@@ -257,7 +256,7 @@ class LambdaTerm(Grammar):
         """Propagates self.bound one level down. Called from generate_bound."""
         for node in self.nodes:
             if node.tokenizable:
-                node._bound += self._bound
+                node.bound += self.bound
 
     def get(self, idxs):
         """Gets node at position specified by idxs. idxs=[] will return self."""
@@ -293,7 +292,7 @@ class LambdaTerm(Grammar):
             return False
 
         for attr in vars(self):
-            if not attr.startswith("_") and vars(self)[attr] != vars(other)[attr]:
+            if not attr in ("bound", "_flattened") and vars(self)[attr] != vars(other)[attr]:
                 return False
         return True
 
@@ -304,13 +303,13 @@ class LambdaTerm(Grammar):
 
 class Variable(LambdaTerm):
     """Variable in lambda calculus: alphabetic character(s) that represent abstractions."""
-    VALID = list(ascii_letters) + Grammar.SUBS
+    INVALID = Builtin.TOKENS + [" "] + list(str(digit) for digit in range(10))
 
     @staticmethod
     def check_grammar(expr, preprocess=True):
         if preprocess:
             expr = Grammar.preprocess(expr)
-        return all(char in Variable.VALID for char in expr)
+        return not any(char in Variable.INVALID for char in expr)
 
     def tokenize(self):
         """Variables are not tokenizable, so do nothing."""
@@ -388,7 +387,7 @@ class Abstraction(LambdaTerm):
     def alpha_convert(self, var, new_arg):
         arg, body = self.nodes
 
-        if new_arg in self._bound:
+        if new_arg in self.bound:
             raise ValueError(f"'{new_arg.expr}' is bound in '{self.expr}'")
         elif var != arg:
             self.nodes[self.nodes.index(body)] = body.alpha_convert(var, new_arg)
@@ -399,7 +398,7 @@ class Abstraction(LambdaTerm):
         arg, body = self.nodes
 
         if var != arg:
-            if var not in body._bound and new_term in body._bound:
+            if var not in body.bound and new_term in body.bound:
                 new_term = new_term.alpha_convert(new_term, self.get_new_arg(var, new_term))
 
             self.nodes = [arg, body.sub(var, new_term)]
@@ -409,7 +408,7 @@ class Abstraction(LambdaTerm):
 
     def generate_bound(self):
         arg, body = self.nodes
-        self._bound += body._bound + [arg]
+        self.bound += body.bound + [arg]
 
         self.propagate_bound()
 
@@ -476,7 +475,7 @@ class Application(LambdaTerm):
         self.nodes = [LambdaTerm.generate_tree(left_child), LambdaTerm.generate_tree(right_child)]
 
     def alpha_convert(self, var, new_arg):
-        if new_arg in self._bound:
+        if new_arg in self.bound:
             raise ValueError(f"'{new_arg.expr}' is bound in '{self.expr}'")
 
         self.nodes = [node.alpha_convert(var, new_arg) for node in self.nodes]
@@ -484,7 +483,7 @@ class Application(LambdaTerm):
 
     def sub(self, var, new_term):
         """Beta conversion is applied the same way as alpha conversion for Applications."""
-        if var in self._bound:
+        if var in self.bound:
             new_term.alpha_convert(new_term, self.get_new_arg(var, new_term))
 
         self.nodes = [node.sub(var, new_term) for node in self.nodes]
@@ -494,7 +493,7 @@ class Application(LambdaTerm):
 
     def generate_bound(self):
         left, right = self.nodes
-        self._bound += left._bound + right._bound
+        self.bound += left.bound + right.bound
 
         self.propagate_bound()
 
@@ -523,6 +522,8 @@ class NormalOrderReducer:
 
     def __init__(self, expr, generate=True, reduce=False):
         self.expr = expr
+        self.tree = Variable("<null>")  # placeholder until generate_tree is called
+
         self.generated = False
         self.reduced = False
 
