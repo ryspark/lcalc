@@ -1,7 +1,7 @@
 """Lexical analysis for lc language, a shallow wrapper around pure lambda calculus. Note that this module does not
 provide input file parsing, but rather tokenization of arbitrary string expressions.
 
-Grammar (not sure if this is done properly...):
+PureGrammar (not sure if this is done properly...):
 
 ```
 <named_func> ::= <var> ":=" <λ-term>
@@ -13,17 +13,19 @@ Grammar (not sure if this is done properly...):
 """
 
 from abc import abstractmethod, ABC
+from copy import deepcopy
 import re
 
-from interpreter.pure.lexical import LambdaTerm, Variable, NormalOrderReducer
-from interpreter.pure.lexical import Grammar
-
-Grammar.illegal.append("#")   # character for signifying import statement
-Grammar.illegal.append("\"")  # character that surrounds filepath in import statement
-Grammar.illegal.append(":=")  # characters for declaring a named func
+from interpreter.lang.numerical import cnumberify, numberify
+from interpreter.pure.lexical import LambdaTerm, Variable, NormalOrderReducer, PureGrammar
 
 
-class GrammarLC(ABC):
+PureGrammar.illegal.append("#")   # character for signifying import statement
+PureGrammar.illegal.append("\"")  # character that surrounds filepath in import statement
+PureGrammar.illegal.append(":=")  # characters for declaring a named func
+
+
+class Grammar(ABC):
     """Superclass representing any grammar object in lc language."""
 
     def __init__(self, expr):
@@ -37,10 +39,6 @@ class GrammarLC(ABC):
         """"This method should check expr's top-level grammar and return whether or not it is valid. It should also
         raise a SyntaxError if expr's top-level grammar is similar to the accepted grammar but syntactically invalid.
         """
-
-    @abstractmethod
-    def run(self):
-        """This method should define behavior for 'running' a Grammar object."""
 
     @classmethod
     def infer(cls, expr):
@@ -71,8 +69,9 @@ class GrammarLC(ABC):
         return hash(self.expr)
 
 
-class ImportStmt(GrammarLC):
+class ImportStmt(Grammar):
     """Import statement in lc. See docstrings for grammar."""
+
     def __init__(self, expr):
         super().__init__(expr)
 
@@ -89,12 +88,8 @@ class ImportStmt(GrammarLC):
 
         return True
 
-    def run(self):
-        """Returns path of imported module to be inserted into the current Session."""
-        return self.path
 
-
-class FuncObj(GrammarLC):
+class FuncObj(Grammar):
     """Thin wrapper around NormalOrderReducer used to represent LambdaTerm objects in the lc language."""
 
     def __init__(self, expr):
@@ -110,7 +105,7 @@ class FuncObj(GrammarLC):
     @property
     def flattened(self):
         """Returns flattened as given by NormalOrderReducer."""
-        return self.term.tree.flattened
+        return self.term.flattened
 
 
 class NamedFunc(FuncObj):
@@ -121,6 +116,7 @@ class NamedFunc(FuncObj):
         name, term = self.original_expr.split(":=")
         self.name = Variable(name)
         self.term = NormalOrderReducer(term)
+        cnumberify(self.term)
 
         if self.name in self.flattened:
             raise SyntaxError("recursion not supported in lambda calculus")
@@ -138,36 +134,35 @@ class NamedFunc(FuncObj):
 
         # check 2: is r-value a LambdaTerm?
         if not LambdaTerm.infer_type(rval):
-            raise SyntaxError(f"r-value of {expr} is not a valid LambdaTerm")
+            raise SyntaxError(f"r-value of '{expr}' is not a valid LambdaTerm")
 
         # check 3: is l-value a Variable?
         if LambdaTerm.infer_type(lval) is not Variable:
-            raise SyntaxError(f"l-value of {expr} is not a valid Variable")
+            raise SyntaxError(f"l-value of '{expr}' is not a valid Variable")
+        elif PureGrammar.preprocess(lval).isdigit():
+            raise SyntaxError(f"l-value of '{expr}' is a real number")
 
         return True
 
-    def run(self, to_exec):
-        """On run, NamedFuncs beta-reduce and substitute accordingly."""
-        self.term.beta_reduce()
-        for stmt in to_exec:
-            self.sub(stmt)
-
-    def sub(self, func_obj, path=None):
-        """Substitutes all occurences of self.name in tree for self.replace. tree must be a FuncObj. If path is
-        specified, sub will simply call func_obj.term.set(path, self.term.term.tree).
+    def sub(self, func_obj, precalc_path=None):
+        """Substitutes all occurences of self.name in tree for self.replace. tree must be a FuncObj. If precalc_path is
+        specified, sub will simply call func_obj.term.set(precalc_path, self.term.term.tree).
         """
-        if not self.term.generated:
-            self.term.generate_tree()
         if not self.term.reduced:
             self.term.beta_reduce()
 
-        if path is not None:
-            func_obj.term.set(path, self.term.tree)
+        if precalc_path is not None:
+            func_obj.term.set(precalc_path, self.term.tree)
         else:
             for node, paths in func_obj.flattened.items():
                 if node == self.name:
                     for path in paths:
-                        func_obj.term.set(path, self.term.tree)
+                        func_obj.term.set(path, deepcopy(self.term.tree))
+
+    def sub_all(self, to_exec):
+        """In-place beta-reduction and substitution of elements of to_exec."""
+        for stmt in to_exec:
+            self.sub(stmt)
 
     def __repr__(self):
         return f"{self._cls}(name={repr(self.name)}, replace={repr(self.term)})"
@@ -181,12 +176,14 @@ class ExecStmt(FuncObj):
     def __init__(self, expr):
         super().__init__(expr)
         self.term = NormalOrderReducer(expr)
+        cnumberify(self.term)
 
     @staticmethod
     def check_grammar(expr):
         return LambdaTerm.infer_type(expr) is not None
 
-    def run(self):
+    def execute(self):
         """Running an ExecStmt is equivalent to beta-reducing its term."""
         self.term.beta_reduce()
+        numberify(self.term)
         return self.term
