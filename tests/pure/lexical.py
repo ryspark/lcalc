@@ -65,7 +65,7 @@ class VariableTestCase(unittest.TestCase):
         for case in should_raise:
             self.assertRaises(SyntaxError, Variable.check_grammar, case)
 
-        should_fail = ["awe3", "6awfe", ".", ".ew", "λx"]
+        should_fail = [".", ".ew", "λx"]
         for case in should_fail:
             self.assertFalse(Variable.check_grammar(case), case)
 

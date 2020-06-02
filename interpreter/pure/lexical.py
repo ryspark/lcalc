@@ -294,13 +294,15 @@ class LambdaTerm(PureGrammar):
 
 class Variable(LambdaTerm):
     """Variable in lambda calculus: character(s) that represent abstractions."""
-    INVALID = PureGrammar.illegal + Builtin.TOKENS + [" "]
+    INVALID = Builtin.TOKENS + [" "]
 
     @staticmethod
     def check_grammar(expr, preprocess=True):
         if preprocess:
             expr = PureGrammar.preprocess(expr)
-        return not any(char in Variable.INVALID for char in expr)
+        if not any(char in Builtin.TOKENS + [" "] for char in expr):
+            return not any(char in expr for char in PureGrammar.illegal)
+        return False
 
     def tokenize(self):
         """Variables are not tokenizable, so do nothing."""

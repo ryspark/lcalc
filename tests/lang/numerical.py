@@ -18,7 +18,7 @@ class NumericalTestCase(unittest.TestCase):
     def test_number(self):
         should_fail = [Abstraction("λf.λx.f f"), Abstraction("λf.λx.x f x")]
         for case in should_fail:
-            self.assertEqual(number(case), case)
+            self.assertIsNone(number(case), case)
 
         should_pass = {3: Abstraction("λf.λx.f (f (f (x)))"), 0: Abstraction("λf.λx.x")}
         for result, case in should_pass.items():
