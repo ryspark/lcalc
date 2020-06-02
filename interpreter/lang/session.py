@@ -4,7 +4,7 @@ mode or file interpretation mode.
 
 import os
 
-from interpreter.lang.lexical import DefineStmt, ExecStmt, ImportStmt, Grammar, NamedFunc
+from lang.lexical import DefineStmt, ExecStmt, ImportStmt, Grammar, NamedFunc
 
 
 class Session:
@@ -100,12 +100,8 @@ class Session:
             if stmt.name in self.flattened:
                 stmt.sub_all(self.to_exec)
 
-        print("TO_EXEC:\n" + "".join(["    " + str(func) + "\n" for func in self.to_exec]))
-
         for stmt in self.to_exec:  # run ExecStmts
             self.results.append(stmt.execute())
-
-        print("RESULTS:\n" + "".join(["    " + repr(func) + "\n" for func in self.results]))
 
     def _get_paths(self, path):
         """Returns [path] if path != 'common' else absolute paths of common lc files."""
@@ -125,5 +121,3 @@ class Session:
                         funcs[node].sub(func, path)
 
             seen.append(func.name)
-
-        print("SCOPE:\n" + "".join(["    " + str(func) + "\n" for func in self.scope]))

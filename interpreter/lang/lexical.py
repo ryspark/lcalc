@@ -19,8 +19,8 @@ Comments are handled in session.py: there is no dedicated Grammar class for comm
 from abc import abstractmethod, ABC
 from copy import deepcopy
 
-from interpreter.lang.numerical import cnumberify, numberify
-from interpreter.pure.lexical import LambdaTerm, Variable, NormalOrderReducer, PureGrammar
+from lang.numerical import cnumberify, numberify
+from pure.lexical import LambdaTerm, Variable, NormalOrderReducer, PureGrammar
 
 
 PureGrammar.illegal.append("--")  # characters for signifying beginning of comment

@@ -5,7 +5,7 @@ everything pure as possible.
 Source: https://en.wikipedia.org/wiki/Church_encoding#Calculation_with_Church_numerals
 """
 
-from interpreter.pure.lexical import Abstraction, Variable
+from pure.lexical import Abstraction, Variable
 
 
 def cnumber(num):
