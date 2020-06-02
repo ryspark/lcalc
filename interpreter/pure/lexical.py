@@ -32,14 +32,14 @@ means that function application must be separated by spaces or parentheses.
 from abc import abstractmethod, ABC
 
 
-class Grammar(ABC):
-    """Superclass that represents any character/set of characters present in lambda calculus."""
+class PureGrammar(ABC):
+    """Superclass that represents any character/set of characters present in pure lambda calculus."""
     illegal = []
     SUBS = ["\u2080", "\u2081", "\u2082", "\u2083", "\u2084", "\u2085", "\u2086", "\u2087", "\u2088", "\u2089"]
 
     def __init__(self, expr):
-        """Does not provide grammar check: call check_grammar manually before instantiating Grammar obj."""
-        self.expr = Grammar.preprocess(expr)
+        """Does not provide grammar check: call check_grammar manually before instantiating PureGrammar obj."""
+        self.expr = PureGrammar.preprocess(expr)
         self._cls = type(self).__name__
         self.nodes = []
 
@@ -69,34 +69,26 @@ class Grammar(ABC):
         if not original_expr:
             raise SyntaxError("Lambda term cannot be empty")
 
-        for char in Grammar.illegal:
+        for char in PureGrammar.illegal:
             if char in original_expr:
                 raise SyntaxError(f"'{original_expr}' contains illegal character '{char}'")
 
         expr = original_expr.lstrip().rstrip()
-        if expr[0] + expr[-1] == "()" and Grammar.are_parens_balanced(expr[1:-1]):
+        if expr[0] + expr[-1] == "()" and PureGrammar.are_parens_balanced(expr[1:-1]):
             expr = expr[1:-1]
 
         if original_expr == expr:
             return original_expr
-        return Grammar.preprocess(expr)
-
-    @staticmethod
-    def subscript(var, num):
-        """Returns var with subscript of n."""
-        subscripted = var
-        for digit in str(num):
-            subscripted += Grammar.SUBS[int(digit)]
-        return subscripted
+        return PureGrammar.preprocess(expr)
 
     def display(self, indents=0):
-        """Recursively displays Grammar tree with readable format.
+        """Recursively displays PureGrammar tree with readable format.
 
         Format:
-        <Grammar>(expr='<expr>', nodes=[
-            <Grammar>(expr='<expr>', nodes=[
+        <PureGrammar>(expr='<expr>', nodes=[
+            <PureGrammar>(expr='<expr>', nodes=[
                 ...
-                <Grammar>(expr='<expr>')  # <-- if nodes is empty
+                <PureGrammar>(expr='<expr>')  # <-- if nodes is empty
             ])
         ])
         """
@@ -112,10 +104,10 @@ class Grammar(ABC):
         return f"{self._cls}('{self.expr}')"
 
     def __eq__(self, other):
-        return type(self) == type(other) and self.expr == other.expr
+        return isinstance(other, type(self)) and self.expr == other.expr
 
 
-class Builtin(Grammar):
+class Builtin(PureGrammar):
     """Built-in lambda calculus tokens: 'λ', '.', '(', ')' """
     TOKENS = ["λ", ".", "(", ")"]
 
@@ -128,7 +120,7 @@ class Builtin(Grammar):
         return False
 
 
-class LambdaTerm(Grammar):
+class LambdaTerm(PureGrammar):
     """Represents a valid λ-term: variable, abstraction, or application. Also abstractly defines functionality that
     will allow a syntax tree to be built.
     """
@@ -154,9 +146,9 @@ class LambdaTerm(Grammar):
 
     @abstractmethod
     def alpha_convert(self, var, new_arg):
-        """Given an abstraction λvar.M, this method returns term with all free occurences of var in M renamed to
-        new_arg. Proper usage of this method is provided in beta_reduce. Assumes var is a Variable and new_arg a
-        LambdaTerm, and should not update self.expr with alpha-converted expr (unless self is Variable).
+        """Given an abstraction λvar.M, this method renames all free occurences of var in M with new_arg. Proper usage
+        of this method is provided in beta_reduce. Assumes var is a Variable and new_arg a LambdaTerm, and should not
+        update self.expr with alpha-converted expr (unless self is Variable).
         """
 
     @abstractmethod
@@ -239,27 +231,30 @@ class LambdaTerm(Grammar):
 
         return find_outer_redex(self, [])
 
-    def get_new_arg(self, var, new_term):
+    def get_new_arg(self, var, new_term, body):
         """Returns the next term that isn't var nor arg and occurs in neither body nor new_term."""
-        already_used = [var]
-        for node in self.nodes + [new_term]:
-            if node.tokenizable:
-                already_used.append(node)
-            else:
-                already_used.extend(node.bound)
+        already_used = [var] + self.get_subnodes() + new_term.get_subnodes() + body.get_subnodes()
 
         subscript = 0
         while True:
-            new_arg = Grammar.subscript(new_term.expr, subscript)
+            new_arg = Variable.subscript(new_term.expr, subscript)
             if new_arg not in already_used:
-                return Variable(new_arg)
+                return new_arg
             subscript += 1
 
-    def propagate_bound(self):
-        """Propagates self.bound one level down. Called from generate_bound."""
-        for node in self.nodes:
-            if node.tokenizable:
-                node.bound += self.bound
+    def get_subnodes(self):
+        """Gets all subnodes of self."""
+
+        def push_nodes(nodes, tree):
+            if not tree.tokenizable:
+                nodes.append(tree)
+            else:
+                for node in tree.nodes:
+                    push_nodes(nodes, node)
+
+        nodes_list = []
+        push_nodes(nodes_list, self)
+        return nodes_list
 
     def get(self, idxs):
         """Gets node at position specified by idxs. idxs=[] will return self."""
@@ -299,25 +294,26 @@ class LambdaTerm(Grammar):
 
 class Variable(LambdaTerm):
     """Variable in lambda calculus: character(s) that represent abstractions."""
-    INVALID = Grammar.illegal + Builtin.TOKENS + list(map(str, range(10))) + [" "]
+    INVALID = PureGrammar.illegal + Builtin.TOKENS + [" "]
 
     @staticmethod
     def check_grammar(expr, preprocess=True):
         if preprocess:
-            expr = Grammar.preprocess(expr)
+            expr = PureGrammar.preprocess(expr)
         return not any(char in Variable.INVALID for char in expr)
 
     def tokenize(self):
         """Variables are not tokenizable, so do nothing."""
 
     def alpha_convert(self, var, new_arg):
-        if self.expr == var.expr:
-            return LambdaTerm.generate_tree(new_arg.expr)  # type conversion might occur
-        return Variable(self.expr)
+        if self == var:
+            self.expr = new_arg.expr
 
     def sub(self, var, new_term):
-        """Beta conversion is the same as alpha conversion for Variables."""
-        return self.alpha_convert(var, new_term)
+        """Beta conversion is similar to alpha conversion for Variables, but types can change."""
+        if self == var:
+            return LambdaTerm.generate_tree(new_term.expr)  # type conversion might occur
+        return Variable(self.expr)
 
     def generate_bound(self):
         """Variables have no nodes and therefore no bound variables."""
@@ -333,6 +329,27 @@ class Variable(LambdaTerm):
     def is_leftmost(self):
         return False
 
+    def like(self, other):
+        """Checks whether self and other are equal, ignoring subscripts."""
+
+        def strip_subscript(expr):
+            while expr[-1] in PureGrammar.SUBS:
+                expr = expr[:-1]
+            return expr
+
+        return self == other or strip_subscript(self.expr) == strip_subscript(other.expr)
+
+    @classmethod
+    def subscript(cls, var, num):
+        """Returns var with subscript of n."""
+        while var[-1] in PureGrammar.SUBS:
+            var = var[:-1]  # remove any subscripts
+
+        subscripted = var
+        for digit in PureGrammar.preprocess(str(num)):
+            subscripted += PureGrammar.SUBS[int(digit)]
+        return cls(subscripted)
+
 
 class Abstraction(LambdaTerm):
     """Abstraction: the basic datatype in lambda calculus."""
@@ -346,7 +363,7 @@ class Abstraction(LambdaTerm):
         The reason for this discrepancy is to delegate recursive token parsing to LambdaAST.
         """
         if preprocess:
-            expr = Grammar.preprocess(expr)
+            expr = PureGrammar.preprocess(expr)
 
         # check 1: are required Builtins (λ, .) correctly placed and matched within expr?
         bind = expr.find("λ")
@@ -381,32 +398,30 @@ class Abstraction(LambdaTerm):
         self.nodes = [arg, body]
 
     def alpha_convert(self, var, new_arg):
+        if new_arg in self.get_subnodes():
+            raise ValueError(f"'{new_arg.expr}' already in '{self.expr}'")
+
         arg, body = self.nodes
-
-        if new_arg in self.bound:
-            raise ValueError(f"'{new_arg.expr}' is bound in '{self.expr}'")
-        elif var != arg:
-            self.nodes[self.nodes.index(body)] = body.alpha_convert(var, new_arg)
-
-        return self
+        if var != arg:
+            body.alpha_convert(var, new_arg)
 
     def sub(self, var, new_term):
         arg, body = self.nodes
 
         if var != arg:
-            if var not in body.bound and new_term in body.bound:
-                new_term = new_term.alpha_convert(new_term, self.get_new_arg(var, new_term))
+            if arg not in new_term.bound and arg in new_term.get_subnodes():  # if arg is free in new_term
+                new_arg = new_term.get_new_arg(var, arg, body)
+
+                body.alpha_convert(arg, new_arg)  # must convert body first because arg changes
+                arg.alpha_convert(arg, new_arg)
 
             self.nodes = [arg, body.sub(var, new_term)]
 
-        self.update_expr()
         return self
 
     def generate_bound(self):
         arg, body = self.nodes
-        self.bound += body.bound + [arg]
-
-        self.propagate_bound()
+        self.bound = body.bound + [arg]
 
     def update_expr(self):
         arg, body = self.nodes
@@ -438,10 +453,10 @@ class Application(LambdaTerm):
         - Accepted Application format: anything but other LambdaTerms, grouped correctly by parens/spaces
         """
         if preprocess:
-            expr = Grammar.preprocess(expr)
+            expr = PureGrammar.preprocess(expr)
 
         # check 1: are parentheses balanced?
-        if not Grammar.are_parens_balanced(expr):
+        if not PureGrammar.are_parens_balanced(expr):
             raise SyntaxError(f"'{expr}' has mismatched parentheses")
 
         # check 2: are there spaces or parentheses in expr?
@@ -478,27 +493,22 @@ class Application(LambdaTerm):
         self.nodes = [LambdaTerm.generate_tree(left_child), LambdaTerm.generate_tree(right_child)]
 
     def alpha_convert(self, var, new_arg):
-        if new_arg in self.bound:
-            raise ValueError(f"'{new_arg.expr}' is bound in '{self.expr}'")
+        if new_arg in self.get_subnodes():
+            raise ValueError(f"'{new_arg.expr}' is present in '{self.expr}'")
 
-        self.nodes = [node.alpha_convert(var, new_arg) for node in self.nodes]
-        return self
+        left, right = self.nodes
+        left.alpha_convert(var, new_arg)
+        right.alpha_convert(var, new_arg)
 
     def sub(self, var, new_term):
-        """Beta conversion is applied the same way as alpha conversion for Applications."""
-        if var in self.bound:
-            new_term.alpha_convert(new_term, self.get_new_arg(var, new_term))
-
+        """Beta conversion is applied like alpha conversion for Applications."""
         self.nodes = [node.sub(var, new_term) for node in self.nodes]
-        self.update_expr()
 
         return self
 
     def generate_bound(self):
         left, right = self.nodes
-        self.bound += left.bound + right.bound
-
-        self.propagate_bound()
+        self.bound = left.bound + right.bound
 
     def update_expr(self):
         left, right = self.nodes
@@ -506,11 +516,13 @@ class Application(LambdaTerm):
         left.update_expr()
         right.update_expr()
 
-        self.expr = f"{left.expr} "
-        if not right.tokenizable:
-            self.expr += f"{right.expr}"
-        else:
-            self.expr += f"({right.expr})"
+        self.expr = f""
+        for node in self.nodes:
+            if not node.tokenizable:
+                self.expr += f"{node.expr} "
+            else:
+                self.expr += f"({node.expr}) "
+        self.expr = self.expr.rstrip()
 
     @property
     def tokenizable(self):
@@ -527,22 +539,13 @@ class Application(LambdaTerm):
 class NormalOrderReducer:
     """Implements normal-order beta reduction of a syntax tree. Used instead of LambdaTerm in lang."""
 
-    def __init__(self, expr, generate=True, reduce=False):
+    def __init__(self, expr, reduce=False):
         self._expr = expr
-        self.tree = Variable("<null>")  # placeholder until generate_tree is called
+        self.tree = LambdaTerm.generate_tree(self._expr)
 
-        self.generated = False
         self.reduced = False
-
-        if generate:
-            self.generate_tree()
         if reduce:
             self.beta_reduce()
-
-    def generate_tree(self):
-        """Generates syntax tree. Thin wrapper around LambdaTerm.generate_tree."""
-        self.tree = LambdaTerm.generate_tree(self._expr)
-        self.generated = True
 
     def beta_reduce(self):
         """In-place normal-order beta reduction of self.tree."""
@@ -558,7 +561,7 @@ class NormalOrderReducer:
 
             redex_path = self.tree.left_outer_redex()
 
-        self.tree.expr = Grammar.preprocess(self.tree.expr)  # for greater readability
+        self.tree.expr = PureGrammar.preprocess(self.tree.expr)  # for greater readability
         self.reduced = True
 
     def set(self, idxs, node):
@@ -568,6 +571,10 @@ class NormalOrderReducer:
         except ValueError:
             self.tree = node
         self.tree.update_expr()
+
+    @property
+    def flattened(self):
+        return self.tree.flattened
 
     def __repr__(self):
         return repr(self.tree)
