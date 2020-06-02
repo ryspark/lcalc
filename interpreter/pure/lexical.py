@@ -30,6 +30,7 @@ means that function application must be separated by spaces or parentheses.
 """
 
 from abc import abstractmethod, ABC
+from lang.error import error
 
 
 class PureGrammar(ABC):

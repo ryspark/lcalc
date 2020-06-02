@@ -106,7 +106,7 @@ class Session:
     def _get_paths(self, path):
         """Returns [path] if path != 'common' else absolute paths of common lc files."""
         if path == "common":
-            return [os.path.abspath(f"{self.common_path}/{path}") for path in os.listdir(self.common_path)]
+            return [f"{self.common_path}/{file}" for file in os.listdir(self.common_path)]
         return [os.path.abspath(path)]
 
     def _expand_scope(self):

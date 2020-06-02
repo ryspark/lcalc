@@ -1,5 +1,3 @@
-#import "../common/numerical.lc" -- weird paths for common
-
 -- Basic logical operations
 -- Source: https://personal.utdallas.edu/~gupta/courses/apl/lambda.pdf
 
@@ -11,7 +9,7 @@ OR     := λx.λy.x TRUE y
 NOT    := λx.x FALSE TRUE
 
 ISZERO := λx.x FALSE NOT FALSE
->=     := λx.λy.ISZERO (x PRED y)
+>=     := λx.λy.ISZERO (x (λn.λf.λx.n (λg.λh.h (g f)) (λu.x) (λu.u)) y)
 =      := λx.λy.AND (>= x y) (>= y x)
 !=     := λx.λy.NOT (= x y)
 
