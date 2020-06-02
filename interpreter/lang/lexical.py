@@ -1,15 +1,19 @@
 """Lexical analysis for lc language, a shallow wrapper around pure lambda calculus. Note that this module does not
 provide input file parsing, but rather tokenization of arbitrary string expressions.
 
-All grammar can be defined as follows:
+All grammar can be loosely defined as follows:
 
 ```
-<import_stmt> ::= "#import " <filepath>     ; imports relative to this .lc file
+<import_stmt> ::= "#import " <filepath>     ; imports relative to this .lc file ("common" denotes common/*.lc)
 <define_stmt> ::= "#define " <char> <char>  ; blindly replaces instances of first <char> with second <char>
 
 <named_func> ::= <var> ":=" <λ-term>        ; only reduced if used later on
 <exec_stmt> ::= <λ-term>                    ; will be outputted when interpreter is run
+
+<comment> ::= "--" <char>*
 ```
+
+Comments are handled in session.py: there is no dedicated Grammar class for comments.
 """
 
 from abc import abstractmethod, ABC
@@ -19,6 +23,7 @@ from interpreter.lang.numerical import cnumberify, numberify
 from interpreter.pure.lexical import LambdaTerm, Variable, NormalOrderReducer, PureGrammar
 
 
+PureGrammar.illegal.append("--")  # characters for signifying beginning of comment
 PureGrammar.illegal.append("#")   # character for signifying import statement
 PureGrammar.illegal.append("\"")  # character that surrounds filepath in import statement
 PureGrammar.illegal.append(":=")  # characters for declaring a named func/define statements
@@ -27,33 +32,40 @@ PureGrammar.illegal.append(":=")  # characters for declaring a named func/define
 class Grammar(ABC):
     """Superclass representing any grammar object in lc language."""
 
-    def __init__(self, expr):
+    def __init__(self, expr, original_expr=None):
         """Assumes check_grammar has been run."""
-        self.expr = expr
+        if original_expr is None:
+            original_expr = Grammar.preprocess(expr)
+
+        self.expr = Grammar.preprocess(expr)
+        self.original_expr = original_expr  # used for errors messages
         self._cls = type(self).__name__
 
     @staticmethod
     @abstractmethod
-    def check_grammar(expr):
+    def check_grammar(expr, original_expr):
         """"This method should check expr's top-level grammar and return whether or not it is valid. It should also
         raise a SyntaxError if expr's top-level grammar is similar to the accepted grammar but syntactically invalid.
+        original_expr is used for error messages.
         """
+
+    @staticmethod
+    def preprocess(expr):
+        """Removes trailing whitespace."""
+        return expr.rstrip()
 
     @classmethod
-    def infer(cls, expr, defines=None):
+    def infer(cls, expr, original_expr):
         """Similar to LambdaTerm's generate_tree, this method infers the type of expr and returns an object of the
         correct grammar subclass. No *args, **kwargs support because any args besides expr are handled internally and
-        should not be used. Defines represents #define substitutions to be made (default is None).
+        should not be used.
         """
-        for stmt in defines:
-            expr = stmt.replace(expr)
-
         for subclass_name in cls.__subclasses__():
             subclass = globals()[subclass_name.__name__]
-            if subclass.check_grammar(expr):
-                return subclass(expr)
+            if subclass.check_grammar(expr, original_expr):
+                return subclass(expr, original_expr)
 
-        raise SyntaxError(f"'{expr}' is not valid lc grammar")
+        raise SyntaxError(f"'{original_expr}' is not valid lc grammar")
 
     def __repr__(self):
         return f"{self._cls}('{self.expr}')"
@@ -68,14 +80,17 @@ class Grammar(ABC):
 class ImportStmt(Grammar):
     """Import statement in lc. See docstrings for grammar."""
 
-    def __init__(self, expr):
-        super().__init__(expr)
+    def __init__(self, expr, original_expr=None):
+        super().__init__(expr, original_expr)
 
-        __, path = expr.split(" ")
-        self.path = path.strip("\"")
+        __, path = self.expr.split(" ")
+        self.path = path[1:-1]  # get rid of surrounding " "
 
     @staticmethod
-    def check_grammar(expr):
+    def check_grammar(expr, original_expr):
+        original_expr = Grammar.preprocess(original_expr)
+        expr = Grammar.preprocess(expr)
+
         if not expr.startswith("#import"):
             return False
 
@@ -86,7 +101,7 @@ class ImportStmt(Grammar):
             assert path.startswith("\"") and path.endswith("\"")
 
         except (AssertionError, ValueError):
-            raise SyntaxError(f"'{expr}' has invalid import statement syntax")
+            raise SyntaxError(f"'{original_expr}' has invalid import statement syntax")
 
         return True
 
@@ -95,13 +110,16 @@ class DefineStmt(Grammar):
     """Define statement in lc. See docstrings for grammar."""
     ALIASES = {"<lambda>": "λ", "<declare>": ":=", "<hash>": "#"}
 
-    def __init__(self, expr):
-        super().__init__(expr)
+    def __init__(self, expr, original_expr):
+        super().__init__(expr,original_expr)
 
         __, self.to_replace, self.replacement = self.expr.split(" ")
 
     @staticmethod
-    def check_grammar(expr):
+    def check_grammar(expr, original_expr):
+        original_expr = Grammar.preprocess(original_expr)
+        expr = Grammar.preprocess(expr)
+
         if not expr.startswith("#define"):
             return False
 
@@ -109,11 +127,12 @@ class DefineStmt(Grammar):
             hash_define, to_replace, replacement = expr.split(" ")
 
             assert hash_define == "#define"
-            assert all(not char.isspace() for char in to_replace)
-            assert all(not char.isspace() and char not in PureGrammar.illegal for char in replacement)
+            assert not any(char.isspace() for char in to_replace)
+            assert not any(char.isspace() for char in replacement)
+            assert not any(char in replacement for char in PureGrammar.illegal)
 
         except (AssertionError, ValueError):
-            raise SyntaxError(f"'{expr}' has invalid define statement syntax")
+            raise SyntaxError(f"'{original_expr}' has invalid define statement syntax")
 
         return True
 
@@ -132,8 +151,8 @@ class DefineStmt(Grammar):
 
 class NamedFunc(Grammar):
 
-    def __init__(self, expr):
-        super().__init__(expr)
+    def __init__(self, expr, original_expr):
+        super().__init__(expr, original_expr)
 
         name, term = self.expr.split(":=")
         self.name = Variable(name)
@@ -144,25 +163,28 @@ class NamedFunc(Grammar):
             raise SyntaxError("recursion not supported in lambda calculus")
 
     @staticmethod
-    def check_grammar(expr):
+    def check_grammar(expr, original_expr):
+        original_expr = Grammar.preprocess(original_expr)
+        expr = Grammar.preprocess(expr)
+
         # check 1: is ":=" in expr?
         eq = expr.find(":=")
         if eq == -1:
             return False
         elif eq != expr.rfind(":="):
-            raise SyntaxError(f"'{expr}' contains stray ':='")
+            raise SyntaxError(f"'{original_expr}' contains stray ':='")
 
         lval, rval = expr.split(":=")
 
         # check 2: is r-value a LambdaTerm?
         if not LambdaTerm.infer_type(rval):
-            raise SyntaxError(f"r-value of '{expr}' is not a valid LambdaTerm")
+            raise SyntaxError(f"r-value of '{original_expr}' is not a valid LambdaTerm")
 
         # check 3: is l-value a Variable?
         if LambdaTerm.infer_type(lval) is not Variable:
-            raise SyntaxError(f"l-value of '{expr}' is not a valid Variable")
+            raise SyntaxError(f"l-value of '{original_expr}' is not a valid Variable")
         elif PureGrammar.preprocess(lval).isdigit():
-            raise SyntaxError(f"l-value of '{expr}' is a real number")
+            raise SyntaxError(f"l-value of '{original_expr}' is a real number")
 
         return True
 
@@ -195,13 +217,13 @@ class ExecStmt(Grammar):
     statements.
     """
 
-    def __init__(self, expr):
-        super().__init__(expr)
+    def __init__(self, expr, original_expr):
+        super().__init__(expr, original_expr)
         self.term = NormalOrderReducer(expr)
         cnumberify(self.term)
 
     @staticmethod
-    def check_grammar(expr):
+    def check_grammar(expr, original_expr):
         return LambdaTerm.infer_type(expr) is not None
 
     def execute(self):
