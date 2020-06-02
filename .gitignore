@@ -4,3 +4,6 @@
 # Pycharm files
 .idea/
 .DS_STORE
+
+# Tests
+tests
