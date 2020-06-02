@@ -73,7 +73,7 @@ class PureGrammar(ABC):
             if char in original_expr:
                 raise SyntaxError(f"'{original_expr}' contains illegal character '{char}'")
 
-        expr = original_expr.lstrip().rstrip()
+        expr = original_expr.strip()
         if expr[0] + expr[-1] == "()" and PureGrammar.are_parens_balanced(expr[1:-1]):
             expr = expr[1:-1]
 
@@ -490,6 +490,9 @@ class Application(LambdaTerm):
                 break
 
         left_child, right_child = self.expr[:start_right_child], self.expr[start_right_child:]
+        if left_child == right_child == self.expr:
+            raise SyntaxError(f"'{self.expr}' is invalid LambdaTerm grammar")
+
         self.nodes = [LambdaTerm.generate_tree(left_child), LambdaTerm.generate_tree(right_child)]
 
     def alpha_convert(self, var, new_arg):
