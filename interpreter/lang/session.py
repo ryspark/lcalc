@@ -1,17 +1,16 @@
+"""Session control for lc language. Implementation of lexical parsing to run the lc interpreter, either in command line
+mode or file interpretation mode.
+"""
+
 import os
 
-from interpreter.lang.lexical import ExecStmt, ImportStmt, GrammarLC, NamedFunc
+from interpreter.lang.lexical import ExecStmt, ImportStmt, Grammar, NamedFunc
 
 
 class Session:
+    """Governs a lc session, with control over scope of named funcs."""
 
-    def __init__(self, path=None, mode="file"):
-        assert mode in ("file", "cmd-line"), f"mode must be 'file' or 'cmd-line', got {mode}"
-        assert mode == "cmd-line" or os.path.exists(path), f"'{path}' not found"
-
-        self.path = path
-        self.mode = mode
-
+    def __init__(self):
         self.scope = []      # dict of NamedFuncs that exist in the current session
         self.to_exec = []    # list of ExecStmts to execute
 
@@ -20,13 +19,18 @@ class Session:
 
     @classmethod
     def from_file(cls, path):
+        """Called to load imports, named funcs, and exec stmts into scope from a file. Used to begin process of
+        interpreting and running a .lc file.
+        """
+        assert os.path.exists(path), f"'{path}' not found"
         raise NotImplementedError()
 
     def add(self, expr):
-        stmt = GrammarLC.infer(expr)
+        """Adds GrammarLC object to the current session. Beta-reduction is lazy and is delayed until run is called."""
+        stmt = Grammar.infer(expr)
 
         if isinstance(stmt, ImportStmt):
-            self.scope.extend(Session.from_file(stmt.run()).scope)
+            self.scope = Session.from_file(stmt.path).scope + self.scope  # append to beginning to avoid name conflicts
 
         elif isinstance(stmt, NamedFunc):
             self.scope.append(stmt)
@@ -36,16 +40,21 @@ class Session:
             self.flattened.extend(list(stmt.term.tree.flattened.keys()))
 
     def run(self):
+        """Runs this session's executable statements by expanding them and then beta-reducing them. Will raise any
+        errors that are encountered.
+        """
         self._expand_scope()       # expand scope NamedFuncs
 
         for stmt in self.scope:    # reduce/sub iff stmt is used in ExecStmts
             if stmt.name in self.flattened:
-                stmt.run(self.to_exec)
+                stmt.sub_all(self.to_exec)
 
         print("TO_EXEC:\n" + "".join(["    " + str(func) + "\n" for func in self.to_exec]))
 
         for stmt in self.to_exec:  # run ExecStmts
-            self.results.append(stmt.run())
+            self.results.append(stmt.execute())
+
+        print("RESULTS:\n" + "".join(["    " + repr(func) + "\n" for func in sess.results]))
 
     def _expand_scope(self):
         """Expands any NamedFuncs within self.scope."""
@@ -64,17 +73,16 @@ class Session:
 
 
 if __name__ == "__main__":
-    from interpreter.lang.numerical import church_numeral
-
-    sess = Session(mode="cmd-line")
+    sess = Session()
 
     sess.add("SUCC  := λn.λf.λx.f (n f x)")
     sess.add("+     := λm.λn.n SUCC m")
     sess.add("**    := λm.λn.n m")
-    sess.add(f"** {church_numeral(2)} {church_numeral(1)}")
+    sess.add("*     := λm.λn.λf.m (n f)")
 
-    print("FLATTENED:\n" + "".join(["    " + str(func) + "\n" for func in sess.flattened]))
-    print()
+    sess.add("+ 1 1")
+    sess.add("* 1 3")
+    sess.add("+ 3 2")
+    sess.add("** 2 2")
 
     sess.run()
-    print("RESULTS:\n" + "".join(["    " + repr(func) + "\n" for func in sess.results]))
