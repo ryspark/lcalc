@@ -1,20 +1,19 @@
 """Lexical analysis for lc language, a shallow wrapper around pure lambda calculus. Note that this module does not
 provide input file parsing, but rather tokenization of arbitrary string expressions.
 
-PureGrammar (not sure if this is done properly...):
+All grammar can be defined as follows:
 
 ```
-<named_func> ::= <var> ":=" <λ-term>
-<exec_stmt> ::= <λ-term>
+<import_stmt> ::= "#import " <filepath>     ; imports relative to this .lc file
+<define_stmt> ::= "#define " <char> <char>  ; blindly replaces instances of first <char> with second <char>
 
-<import_stmt> ::= "#import " " <filepath> "\""  ; relative to this .lc file
+<named_func> ::= <var> ":=" <λ-term>        ; only reduced if used later on
+<exec_stmt> ::= <λ-term>                    ; will be outputted when interpreter is run
 ```
-
 """
 
 from abc import abstractmethod, ABC
 from copy import deepcopy
-import re
 
 from interpreter.lang.numerical import cnumberify, numberify
 from interpreter.pure.lexical import LambdaTerm, Variable, NormalOrderReducer, PureGrammar
@@ -22,7 +21,7 @@ from interpreter.pure.lexical import LambdaTerm, Variable, NormalOrderReducer, P
 
 PureGrammar.illegal.append("#")   # character for signifying import statement
 PureGrammar.illegal.append("\"")  # character that surrounds filepath in import statement
-PureGrammar.illegal.append(":=")  # characters for declaring a named func
+PureGrammar.illegal.append(":=")  # characters for declaring a named func/define statements
 
 
 class Grammar(ABC):
@@ -41,23 +40,20 @@ class Grammar(ABC):
         """
 
     @classmethod
-    def infer(cls, expr):
+    def infer(cls, expr, defines=None):
         """Similar to LambdaTerm's generate_tree, this method infers the type of expr and returns an object of the
         correct grammar subclass. No *args, **kwargs support because any args besides expr are handled internally and
-        should not be used.
+        should not be used. Defines represents #define substitutions to be made (default is None).
         """
+        for stmt in defines:
+            expr = stmt.replace(expr)
 
-        def _infer(cls, expr):
-            for subclass_name in cls.__subclasses__():
-                subclass = globals()[subclass_name.__name__]
-                if subclass.__subclasses__():
-                    return _infer(subclass, expr)
-                elif subclass.check_grammar(expr):
-                    return subclass(expr)
+        for subclass_name in cls.__subclasses__():
+            subclass = globals()[subclass_name.__name__]
+            if subclass.check_grammar(expr):
+                return subclass(expr)
 
-            raise SyntaxError(f"'{expr}' is not valid lc grammar")
-
-        return _infer(cls, expr)
+        raise SyntaxError(f"'{expr}' is not valid lc grammar")
 
     def __repr__(self):
         return f"{self._cls}('{self.expr}')"
@@ -75,50 +71,76 @@ class ImportStmt(Grammar):
     def __init__(self, expr):
         super().__init__(expr)
 
-        self.path = re.match("\"(.*)\"", expr).group()
+        __, path = expr.split(" ")
+        self.path = path.strip("\"")
 
     @staticmethod
     def check_grammar(expr):
-        has_hash_sign = expr.startswith("#")
-        if not has_hash_sign:
+        if not expr.startswith("#import"):
             return False
 
-        if re.match("#import \".*\"", expr) is None:
-            raise SyntaxError(f"'{expr}' has invalid import stmt syntax")
+        try:
+            hash_import, path = expr.split(" ")
+
+            assert hash_import == "#import"
+            assert path.startswith("\"") and path.endswith("\"")
+
+        except (AssertionError, ValueError):
+            raise SyntaxError(f"'{expr}' has invalid import statement syntax")
 
         return True
 
 
-class FuncObj(Grammar):
-    """Thin wrapper around NormalOrderReducer used to represent LambdaTerm objects in the lc language."""
-
-    def __init__(self, expr):
-        self.original_expr = expr
-        self._cls = type(self).__name__
-        self.term = None  # placeholder so property methods don't complain
-
-    @property
-    def expr(self):
-        """Returns expr as given by NormalOrderReducer."""
-        return self.term.tree.expr
-
-    @property
-    def flattened(self):
-        """Returns flattened as given by NormalOrderReducer."""
-        return self.term.flattened
-
-
-class NamedFunc(FuncObj):
+class DefineStmt(Grammar):
+    """Define statement in lc. See docstrings for grammar."""
+    ALIASES = {"<lambda>": "λ", "<declare>": ":=", "<hash>": "#"}
 
     def __init__(self, expr):
         super().__init__(expr)
 
-        name, term = self.original_expr.split(":=")
+        __, self.to_replace, self.replacement = self.expr.split(" ")
+
+    @staticmethod
+    def check_grammar(expr):
+        if not expr.startswith("#define"):
+            return False
+
+        try:
+            hash_define, to_replace, replacement = expr.split(" ")
+
+            assert hash_define == "#define"
+            assert all(not char.isspace() for char in to_replace)
+            assert all(not char.isspace() and char not in PureGrammar.illegal for char in replacement)
+
+        except (AssertionError, ValueError):
+            raise SyntaxError(f"'{expr}' has invalid define statement syntax")
+
+        return True
+
+    def replace(self, expr):
+        """Replaces all occurences of self.to_replace with self.replacement in expr. Also handles special aliases."""
+        replacement = DefineStmt.ALIASES.get(self.replacement, self.replacement)
+        to_replace = self.to_replace
+
+        if replacement == "λ" and len(to_replace) > 1:
+            # if to_replace is more than one character, assume extra space
+            # ex: if to_replace == "lambda" and replacement is "λ", "lambda x" should be replaced, not "lambdax"
+            to_replace += " "
+
+        return expr.replace(to_replace, replacement)
+
+
+class NamedFunc(Grammar):
+
+    def __init__(self, expr):
+        super().__init__(expr)
+
+        name, term = self.expr.split(":=")
         self.name = Variable(name)
         self.term = NormalOrderReducer(term)
         cnumberify(self.term)
 
-        if self.name in self.flattened:
+        if self.name in self.term.flattened:
             raise SyntaxError("recursion not supported in lambda calculus")
 
     @staticmethod
@@ -154,7 +176,7 @@ class NamedFunc(FuncObj):
         if precalc_path is not None:
             func_obj.term.set(precalc_path, self.term.tree)
         else:
-            for node, paths in func_obj.flattened.items():
+            for node, paths in func_obj.term.flattened.items():
                 if node == self.name:
                     for path in paths:
                         func_obj.term.set(path, deepcopy(self.term.tree))
@@ -168,7 +190,7 @@ class NamedFunc(FuncObj):
         return f"{self._cls}(name={repr(self.name)}, replace={repr(self.term)})"
 
 
-class ExecStmt(FuncObj):
+class ExecStmt(Grammar):
     """Another thin wrapper around NormalOrderReducer, which provides functionality for directly executing LambdaTerm
     statements.
     """
