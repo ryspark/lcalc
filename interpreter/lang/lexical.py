@@ -23,10 +23,11 @@ from lang.numerical import cnumberify, numberify
 from pure.lexical import LambdaTerm, Variable, NormalOrderReducer, PureGrammar
 
 
-PureGrammar.illegal.append("--")  # characters for signifying beginning of comment
-PureGrammar.illegal.append("#")   # character for signifying import statement
-PureGrammar.illegal.append("\"")  # character that surrounds filepath in import statement
-PureGrammar.illegal.append(":=")  # characters for declaring a named func/define statements
+PureGrammar.illegal.append("--")   # characters for signifying beginning of comment
+PureGrammar.illegal.append("#")    # character for signifying import statement
+PureGrammar.illegal.append("\"")   # character that surrounds filepath in import statement
+PureGrammar.illegal.append(":=")   # characters for declaring a named func/define statements
+PureGrammar.illegal.append("EOF")  # characters for signifying end of line in command-line mode
 
 
 class Grammar(ABC):
@@ -64,7 +65,6 @@ class Grammar(ABC):
             subclass = globals()[subclass_name.__name__]
             if subclass.check_grammar(expr, original_expr):
                 return subclass(expr, original_expr)
-
         raise SyntaxError(f"'{original_expr}' is not valid lc grammar")
 
     def __repr__(self):

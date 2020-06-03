@@ -1,10 +1,12 @@
-"""Handles errors in lc interpreter.
-
-"""
+"""Error handling for lc language."""
 
 import sys
 
+import termcolor
 
-def error():
-    """Throws error. All errors in lc are syntax errors."""
-    sys.exit(1)
+
+def throw_error(msg, fatal=True):
+    termcolor.cprint(msg)
+
+    if fatal:
+        sys.exit(1)
