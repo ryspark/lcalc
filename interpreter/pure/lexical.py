@@ -30,7 +30,7 @@ means that function application must be separated by spaces or parentheses.
 """
 
 from abc import abstractmethod, ABC
-from lang.error import error
+from copy import deepcopy
 
 
 class PureGrammar(ABC):
@@ -223,39 +223,33 @@ class LambdaTerm(PureGrammar):
 
         def find_outer_redex(tree, path):
             if tree.is_leftmost:
-                return path
-            try:
-                recursed = (find_outer_redex(node, path + [idx]) for idx, node in enumerate(tree.nodes))
-                return next(filter(lambda node: node, recursed))
-            except StopIteration:
-                return None
+                return tree, path
+            for idx, node in enumerate(tree.nodes):
+                result = find_outer_redex(node, path + [idx])
+                if result:
+                    return result
 
-        return find_outer_redex(self, [])
+        try:
+            redex, redex_path = find_outer_redex(self, [])
+            return redex, redex_path
+        except TypeError:
+            return None, None
 
-    def get_new_arg(self, var, new_term, body):
-        """Returns the next term that isn't var nor arg and occurs in neither body nor new_term."""
-        already_used = [var] + self.get_subnodes() + new_term.get_subnodes() + body.get_subnodes()
+    def get_new_arg(self, var, new_var, body):
+        """Returns the next term that isn't var nor new_var and occurs in neither body nor self."""
+        already_used = self.expr + var.expr + body.expr + new_var.expr
+        max_subscript = -1
 
-        subscript = 0
-        while True:
-            new_arg = Variable.subscript(new_term.expr, subscript)
-            if new_arg not in already_used:
-                return new_arg
-            subscript += 1
+        for idx in range(len(already_used) - 1):
+            char, next_char = already_used[idx], already_used[idx + 1]
 
-    def get_subnodes(self):
-        """Gets all subnodes of self."""
+            if char == new_var.expr and next_char in PureGrammar.SUBS:
+                subscript = PureGrammar.SUBS.index(next_char)
 
-        def push_nodes(nodes, tree):
-            if not tree.tokenizable:
-                nodes.append(tree)
-            else:
-                for node in tree.nodes:
-                    push_nodes(nodes, node)
+                if subscript > max_subscript:
+                    max_subscript = subscript
 
-        nodes_list = []
-        push_nodes(nodes_list, self)
-        return nodes_list
+        return Variable.subscript(new_var.expr, max_subscript + 1)
 
     def get(self, idxs):
         """Gets node at position specified by idxs. idxs=[] will return self."""
@@ -264,7 +258,6 @@ class LambdaTerm(PureGrammar):
 
         this, *others = idxs
         if not others:
-            assert this in (0, 1), f"idx must be 0 or 1, got {this}"
             return self.nodes[this]
         else:
             return self.nodes[this].get(others)
@@ -274,14 +267,9 @@ class LambdaTerm(PureGrammar):
         if not idxs:
             raise ValueError("idxs cannot be empty")
 
-        if isinstance(node, Abstraction):
-            node.expr = f"({node.expr})"
-
         this, *others = idxs
         if not others:
-            assert this in (0, 1), f"idx must be 0 or 1, got {this}"
             self.nodes[this] = node
-            self.update_expr()
         else:
             self.nodes[this].set(others, node)
 
@@ -315,8 +303,8 @@ class Variable(LambdaTerm):
     def sub(self, var, new_term):
         """Beta conversion is similar to alpha conversion for Variables, but types can change."""
         if self == var:
-            return LambdaTerm.generate_tree(new_term.expr)  # type conversion might occur
-        return Variable(self.expr)
+            return deepcopy(new_term)  # deepcopy to avoid infinite recursion
+        return self
 
     def generate_bound(self):
         """Variables have no nodes and therefore no bound variables."""
@@ -332,25 +320,13 @@ class Variable(LambdaTerm):
     def is_leftmost(self):
         return False
 
-    def like(self, other):
-        """Checks whether self and other are equal, ignoring subscripts."""
-
-        def strip_subscript(expr):
-            while expr[-1] in PureGrammar.SUBS:
-                expr = expr[:-1]
-            return expr
-
-        return self == other or strip_subscript(self.expr) == strip_subscript(other.expr)
-
     @classmethod
     def subscript(cls, var, num):
         """Returns var with subscript of n."""
         while var[-1] in PureGrammar.SUBS:
-            var = var[:-1]  # remove any subscripts
+            var = var[:-1]  # remove subscripts
 
-        subscripted = var
-        for digit in PureGrammar.preprocess(str(num)):
-            subscripted += PureGrammar.SUBS[int(digit)]
+        subscripted = var + "".join(PureGrammar.SUBS[int(digit)] for digit in PureGrammar.preprocess(str(num)))
         return cls(subscripted)
 
 
@@ -401,9 +377,6 @@ class Abstraction(LambdaTerm):
         self.nodes = [arg, body]
 
     def alpha_convert(self, var, new_arg):
-        if new_arg in self.get_subnodes():
-            raise ValueError(f"'{new_arg.expr}' already in '{self.expr}'")
-
         arg, body = self.nodes
         if var != arg:
             body.alpha_convert(var, new_arg)
@@ -412,7 +385,7 @@ class Abstraction(LambdaTerm):
         arg, body = self.nodes
 
         if var != arg:
-            if arg not in new_term.bound and arg in new_term.get_subnodes():  # if arg is free in new_term
+            if arg not in new_term.bound:  # if arg is free in new_term
                 new_arg = new_term.get_new_arg(var, arg, body)
 
                 body.alpha_convert(arg, new_arg)  # must convert body first because arg changes
@@ -499,9 +472,6 @@ class Application(LambdaTerm):
         self.nodes = [LambdaTerm.generate_tree(left_child), LambdaTerm.generate_tree(right_child)]
 
     def alpha_convert(self, var, new_arg):
-        if new_arg in self.get_subnodes():
-            raise ValueError(f"'{new_arg.expr}' is present in '{self.expr}'")
-
         left, right = self.nodes
         left.alpha_convert(var, new_arg)
         right.alpha_convert(var, new_arg)
@@ -509,7 +479,6 @@ class Application(LambdaTerm):
     def sub(self, var, new_term):
         """Beta conversion is applied like alpha conversion for Applications."""
         self.nodes = [node.sub(var, new_term) for node in self.nodes]
-
         return self
 
     def generate_bound(self):
@@ -518,7 +487,6 @@ class Application(LambdaTerm):
 
     def update_expr(self):
         left, right = self.nodes
-
         left.update_expr()
         right.update_expr()
 
@@ -555,18 +523,28 @@ class NormalOrderReducer:
 
     def beta_reduce(self):
         """In-place normal-order beta reduction of self.tree."""
-        redex_path = self.tree.left_outer_redex()
+        import time
+        subs, sets, redexes = [], [], []
+
+        redex, redex_path = self.tree.left_outer_redex()
 
         while redex_path is not None:
-            redex = self.tree.get(redex_path)
-
             abstraction, new_term = redex.nodes
             arg, body = abstraction.nodes
 
-            self.set(redex_path, body.sub(arg, new_term))
+            s = time.time()
+            sub = body.sub(arg, new_term)
+            subs.append(time.time() - s)
 
-            redex_path = self.tree.left_outer_redex()
+            s = time.time()
+            self.set(redex_path, sub)
+            sets.append(time.time() - s)
 
+            s = time.time()
+            redex, redex_path = self.tree.left_outer_redex()
+            redexes.append(time.time() - s)
+
+        print(f"SUBS: {sum(subs)}, SETS: {sum(sets)}, REDEXES: {sum(redexes)}")
         self.tree.expr = PureGrammar.preprocess(self.tree.expr)  # for greater readability
         self.reduced = True
 
@@ -576,7 +554,6 @@ class NormalOrderReducer:
             self.tree.set(idxs, node)
         except ValueError:
             self.tree = node
-        self.tree.update_expr()
 
     @property
     def flattened(self):

@@ -36,11 +36,11 @@ def number(cnum):
     while nth_body.tokenizable:
         var, nth_body = nth_body.nodes
 
-        if var.tokenizable or not var.like(first_arg):
+        if var.tokenizable or not var == first_arg:
             return None
         num += 1
 
-    return str(num) if nth_body.like(second_arg) else None
+    return str(num) if nth_body == second_arg else None
 
 
 def cnumberify(nor):
