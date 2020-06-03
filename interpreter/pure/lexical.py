@@ -523,28 +523,16 @@ class NormalOrderReducer:
 
     def beta_reduce(self):
         """In-place normal-order beta reduction of self.tree."""
-        import time
-        subs, sets, redexes = [], [], []
-
         redex, redex_path = self.tree.left_outer_redex()
 
         while redex_path is not None:
             abstraction, new_term = redex.nodes
             arg, body = abstraction.nodes
 
-            s = time.time()
-            sub = body.sub(arg, new_term)
-            subs.append(time.time() - s)
+            self.set(redex_path, body.sub(arg, new_term))
 
-            s = time.time()
-            self.set(redex_path, sub)
-            sets.append(time.time() - s)
-
-            s = time.time()
             redex, redex_path = self.tree.left_outer_redex()
-            redexes.append(time.time() - s)
 
-        print(f"SUBS: {sum(subs)}, SETS: {sum(sets)}, REDEXES: {sum(redexes)}")
         self.tree.expr = PureGrammar.preprocess(self.tree.expr)  # for greater readability
         self.reduced = True
 
