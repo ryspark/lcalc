@@ -26,4 +26,4 @@ def main():
             print(node.tree.expr)
 
     else:
-        Shell(Session(COMMON, cmd_line=True)).cmdloop()
+        Shell(Session(common_path=COMMON, cmd_line=True)).cmdloop()

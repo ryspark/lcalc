@@ -10,7 +10,8 @@ from lang.lexical import DefineStmt, ExecStmt, ImportStmt, Grammar, NamedFunc
 class Session:
     """Governs a lc session, with control over scope of named funcs."""
 
-    def __init__(self, common_path="", cmd_line=False):
+    def __init__(self, path="<in>", common_path="", cmd_line=True):
+        self.path = path                # used for error messages
         self.common_path = common_path  # path to common lc lib
         self.cmd_line = cmd_line        # whether or not in command-line mode
 
@@ -20,7 +21,8 @@ class Session:
 
         self.flattened = []  # flattened list of all ExecStmt nodes in the current session
         self.results = []    # results after running ExecStmts
-        self.last_expansion = len(self.scope)
+
+        self.last_expansion = 0
 
     @classmethod
     def from_file(cls, path, common_path):
@@ -28,26 +30,14 @@ class Session:
         interpreting and running a .lc file. path must be an absolute path, and common path must be the path to the
         common lc lib directory.
         """
-        sess = cls(common_path)
+        sess = cls(path, common_path, cmd_line=False)
 
         exprs = []
         add_to_prev = False
 
         with open(path, "r") as file:
             for line in file:
-                line = Grammar.preprocess(line)
-
-                line = cls._remove_comments(line)
-                if not line.isspace() and line and not add_to_prev:
-                    exprs.append(line)
-                elif add_to_prev:
-                    prev = exprs.pop(-1)
-                    exprs.append((prev + line, prev))
-
-                if line.count("(") > line.count(")"):
-                    add_to_prev = True
-                else:
-                    add_to_prev = False
+                __, add_to_prev = cls.preprocess_line(line, add_to_prev, exprs)
 
         for expr in exprs:
             if isinstance(expr, tuple):
@@ -58,11 +48,23 @@ class Session:
         return sess
 
     @staticmethod
-    def _remove_comments(expr):
-        """Removes comments from expr."""
-        if "--" in expr:
-            expr = expr[:expr.index("--")]  # get rid of comments
-        return expr
+    def preprocess_line(line, add_to_prev, exprs=None):
+        """Preprocesses a line from a file or command-line. In command-line mode, exprs can be ignored (used to keep
+        track of file's exprs), but add_to_prev will indicate whether a line continuation is necessary. Returns
+        updated value of line and add_to_prev. Must be called before calling run.
+        """
+        if "--" in line:
+            line = line[:line.index("--")]  # get rid of comments
+
+        line = Grammar.preprocess(line)
+        if exprs is not None:
+            if not line.isspace() and line and not add_to_prev:
+                exprs.append(line)
+            elif add_to_prev:
+                prev = exprs.pop()
+                exprs.append((prev + line, prev))
+
+        return line, line.count("(") > line.count(")")
 
     def add(self, expr, original_expr=None):
         """Adds Grammar object to the current session. Beta-reduction is lazy and is delayed until run is called."""
@@ -71,11 +73,6 @@ class Session:
 
         for stmt in self.defines:
             expr = stmt.replace(expr)
-
-        expr = Session._remove_comments(expr)
-        if not expr:
-            return None
-
         stmt = Grammar.infer(expr, original_expr)
 
         if isinstance(stmt, ImportStmt):
@@ -110,12 +107,13 @@ class Session:
         for stmt in self.to_exec:  # run ExecStmts
             if self.cmd_line:
                 self.results = [stmt.execute()]
+                self.to_exec.remove(stmt)
             else:
                 self.results.append(stmt.execute())
 
-    def pop_last(self):
+    def pop(self):
         """Returns and removes last result. Used in command-line mode."""
-        return self.results.pop(-1).tree.expr
+        return self.results.pop().tree.expr
 
     def _get_paths(self, path):
         """Returns [path] if path != 'common' else absolute paths of common lc files."""

@@ -235,33 +235,6 @@ class LambdaTerm(PureGrammar):
         except TypeError:
             return None, None
 
-    def get_new_arg(self, var, new_var, body):
-        """Returns the next term that isn't var nor new_var and occurs in neither body nor self."""
-        already_used = self.expr + var.expr + body.expr + new_var.expr
-        max_subscript = -1
-
-        for idx in range(len(already_used) - 1):
-            char, next_char = already_used[idx], already_used[idx + 1]
-
-            if char == new_var.expr and next_char in PureGrammar.SUBS:
-                subscript = PureGrammar.SUBS.index(next_char)
-
-                if subscript > max_subscript:
-                    max_subscript = subscript
-
-        return Variable.subscript(new_var.expr, max_subscript + 1)
-
-    def get(self, idxs):
-        """Gets node at position specified by idxs. idxs=[] will return self."""
-        if not idxs:
-            return self
-
-        this, *others = idxs
-        if not others:
-            return self.nodes[this]
-        else:
-            return self.nodes[this].get(others)
-
     def set(self, idxs, node):
         """Sets node at positions specified by idxs. idxs=[] will raise an error."""
         if not idxs:
@@ -325,9 +298,8 @@ class Variable(LambdaTerm):
         """Returns var with subscript of n."""
         while var[-1] in PureGrammar.SUBS:
             var = var[:-1]  # remove subscripts
-
-        subscripted = var + "".join(PureGrammar.SUBS[int(digit)] for digit in PureGrammar.preprocess(str(num)))
-        return cls(subscripted)
+        str_num = PureGrammar.preprocess(str(num))
+        return cls(var + "".join(PureGrammar.SUBS[int(digit)] for digit in str_num))
 
 
 class Abstraction(LambdaTerm):
@@ -386,7 +358,7 @@ class Abstraction(LambdaTerm):
 
         if var != arg:
             if arg not in new_term.bound:  # if arg is free in new_term
-                new_arg = new_term.get_new_arg(var, arg, body)
+                new_arg = self.get_new_arg(var, new_term)
 
                 body.alpha_convert(arg, new_arg)  # must convert body first because arg changes
                 arg.alpha_convert(arg, new_arg)
@@ -417,6 +389,24 @@ class Abstraction(LambdaTerm):
     @property
     def is_leftmost(self):
         return False
+
+    def get_new_arg(self, var, new_term):
+        """Returns the next term that isn't var nor arg and occurs in neither body nor new_term."""
+        arg, body = self.nodes
+
+        already_used = arg.expr + body.expr + var.expr + new_term.expr
+        max_subscript = -1
+
+        for idx in range(len(already_used) - 1):
+            char, next_char = already_used[idx], already_used[idx + 1]
+
+            if char == arg.expr and next_char in PureGrammar.SUBS:
+                subscript = PureGrammar.SUBS.index(next_char)
+
+                if subscript > max_subscript:
+                    max_subscript = subscript
+
+        return Variable.subscript(arg.expr, max_subscript + 1)
 
 
 class Application(LambdaTerm):
@@ -524,16 +514,16 @@ class NormalOrderReducer:
     def beta_reduce(self):
         """In-place normal-order beta reduction of self.tree."""
         redex, redex_path = self.tree.left_outer_redex()
-
         while redex_path is not None:
             abstraction, new_term = redex.nodes
             arg, body = abstraction.nodes
 
             self.set(redex_path, body.sub(arg, new_term))
-
             redex, redex_path = self.tree.left_outer_redex()
 
+        self.tree.update_expr()
         self.tree.expr = PureGrammar.preprocess(self.tree.expr)  # for greater readability
+
         self.reduced = True
 
     def set(self, idxs, node):
