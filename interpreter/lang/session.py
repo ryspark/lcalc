@@ -10,8 +10,9 @@ from lang.lexical import DefineStmt, ExecStmt, ImportStmt, Grammar, NamedFunc
 class Session:
     """Governs a lc session, with control over scope of named funcs."""
 
-    def __init__(self, common_path=""):
+    def __init__(self, common_path="", cmd_line=False):
         self.common_path = common_path  # path to common lc lib
+        self.cmd_line = cmd_line        # whether or not in command-line mode
 
         self.defines = []    # list of define directives
         self.scope = []      # list of NamedFuncs that exist in the current session
@@ -19,6 +20,7 @@ class Session:
 
         self.flattened = []  # flattened list of all ExecStmt nodes in the current session
         self.results = []    # results after running ExecStmts
+        self.last_expansion = len(self.scope)
 
     @classmethod
     def from_file(cls, path, common_path):
@@ -87,21 +89,33 @@ class Session:
             self.scope.append(stmt)
 
         elif isinstance(stmt, ExecStmt):
-            self.to_exec.append(stmt)
-            self.flattened.extend(stmt.term.tree.flattened.keys())
+            if self.cmd_line:
+                self.to_exec = [stmt]
+                self.flattened = list(stmt.term.tree.flattened.keys())
+            else:
+                self.to_exec.append(stmt)
+                self.flattened.extend(stmt.term.tree.flattened.keys())
 
     def run(self):
         """Runs this session's executable statements by expanding them and then beta-reducing them. Will raise any
         errors that are encountered.
         """
-        self._expand_scope()       # expand scope NamedFuncs
+        if self.last_expansion != len(self.scope):
+            self._expand_scope()       # expand NamedFuncs in scope
 
         for stmt in self.scope:    # reduce/sub iff stmt is used in ExecStmts
             if stmt.name in self.flattened:
                 stmt.sub_all(self.to_exec)
 
         for stmt in self.to_exec:  # run ExecStmts
-            self.results.append(stmt.execute())
+            if self.cmd_line:
+                self.results = [stmt.execute()]
+            else:
+                self.results.append(stmt.execute())
+
+    def pop_last(self):
+        """Returns and removes last result. Used in command-line mode."""
+        return self.results.pop(-1).tree.expr
 
     def _get_paths(self, path):
         """Returns [path] if path != 'common' else absolute paths of common lc files."""
@@ -121,3 +135,5 @@ class Session:
                         funcs[node].sub(func, path)
 
             seen.append(func.name)
+
+        self.last_expansion = len(self.scope)
