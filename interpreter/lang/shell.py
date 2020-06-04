@@ -2,9 +2,6 @@
 
 import cmd
 
-from lang.error import throw_error
-from lang.session import Session
-
 
 class Shell(cmd.Cmd):
     """Lambda calculus interpreter shell."""
@@ -15,26 +12,34 @@ class Shell(cmd.Cmd):
 
     def __init__(self, sess, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
         self.sess = sess
+
         self._tmp_line = ""
+        self.line_num = 0
 
     def default(self, line):
         """Executes arbitrary lc command."""
-        line, add_to_prev = Session.preprocess_line(self._tmp_line + line, self._tmp_line)
+        with self.sess.error_handler:  # needed because cmd.Cmd automatically exits on Exception
+            self.line_num += 1
+            line, add_to_prev = self.sess.preprocess_line(self._tmp_line + line, self.line_num, self._tmp_line)
 
-        if line and add_to_prev:
-            self._tmp_line = line
-            self.prompt = self.secondary_prompt
+            if add_to_prev:
+                self._tmp_line = line
+                self.prompt = self.secondary_prompt
+            else:
+                self._tmp_line = ""
+                self.prompt = self._tmp_prompt
 
-        elif line:
-            self._tmp_line = ""
-            self.prompt = self._tmp_prompt
+                try:
+                    self.sess.add(line, self.line_num)
+                except ValueError:
+                    return  # if line is empty, terminate
 
-            self.sess.add(line)
-            self.sess.run()
+                self.sess.run()
 
-            if self.sess.results:
-                print(self.sess.pop())
+                if self.sess.results:
+                    print(self.sess.pop())
 
     def do_help(self, arg):
         """Doesnt return docs, but rather a short intro."""
@@ -57,7 +62,4 @@ class Shell(cmd.Cmd):
 
     def do_exit(self, arg):
         """Exits interpreter."""
-        if arg:
-            throw_error(f"Unrecognized token: '{arg}'", fatal=False)
-            return False
         return True
