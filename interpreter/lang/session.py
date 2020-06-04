@@ -20,13 +20,12 @@ class Session:
         self.cmd_line = cmd_line        # whether or not in command-line mode
 
         self.defines = []    # list of define directives
-        self.scope = []      # list of NamedFuncs that exist in the current session
+        self.scope = []      # list of NamedFuncs that exist in the current session that have not been expanded
+        self.memory = []     # list of NamedFuncs that exist in the current session that have been expanded
         self.to_exec = []    # list of ExecStmts to execute
 
         self.flattened = []  # flattened list of all ExecStmt nodes in the current session
         self.results = []    # results after running ExecStmts
-
-        self.last_expansion = 0  # number of NamedFuncs in last scope
 
         if self.cmd_line:
             self.error_handler.fatal = False
@@ -78,6 +77,7 @@ class Session:
         if isinstance(stmt, ImportStmt):
             for path in self._get_paths(stmt.path):
                 self.scope = Session(self.error_handler, path, self.common_path, self.cmd_line).scope + self.scope
+                # on import, ExecStmts from the imported module will not be run
 
         elif isinstance(stmt, DefineStmt):
             self.defines.append(stmt)
@@ -99,10 +99,9 @@ class Session:
         """Runs this session's executable statements by expanding them and then beta-reducing them. Will raise any
         errors that are encountered.
         """
-        if self.last_expansion != len(self.scope):
-            self._expand_scope()   # expand NamedFuncs in scope if new NamedFuncs have been added
+        self._expand_scope()   # expand NamedFuncs in scope if new NamedFuncs have been added
 
-        for stmt in self.scope:    # reduce/sub iff stmt is used in ExecStmts
+        for stmt in self.memory:    # reduce/sub iff stmt is used in ExecStmts
             if stmt.name in self.flattened:
                 stmt.sub_all(self.to_exec)
 
@@ -124,17 +123,20 @@ class Session:
         return [os.path.abspath(path)]
 
     def _expand_scope(self):
-        """Expands any NamedFuncs within self.scope."""
-        funcs, seen = {func.name: func for func in self.scope}, []
-        for func in self.scope:
+        """Expands any NamedFuncs within self.scope and moves them to self.memory."""
+        funcs, seen, move = {func.name: func for func in self.scope}, [], []
+        for idx, func in enumerate(self.scope):
             for node, paths in func.term.flattened.items():
                 if node in funcs and node not in seen:
                     raise SyntaxError(template("'{}' used prior to definition", node))
                 elif node in funcs:
                     for path in paths:
-                        print(path)
                         funcs[node].sub(func, path)
+
+            self.memory.append(func)
+            move.append(idx)
 
             seen.append(func.name)
 
-        self.last_expansion = len(self.scope)
+        for num, idx in enumerate(move):  # can't modify self.scope during iteration, so do it here
+            del self.scope[idx - num]
