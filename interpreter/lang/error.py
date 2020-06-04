@@ -17,9 +17,7 @@ def template(msg, exprs=None, internal=False, start=0, end=-1, diagnosis=True):
     elif isinstance(exprs, str):
         exprs = [exprs]
 
-    colored_exprs = (colored(expr, attrs=["bold"]) for expr in exprs)  # color expr snippets
-    msg = msg.format(*colored_exprs)
-
+    msg = msg.format(*(colored(expr, attrs=["bold"]) for expr in exprs))  # color expr snippets
     return f"{'i' if internal else ''}|{msg}|{exprs[0] if exprs else ''}|{start}|{end}|{'d' if diagnosis else ''}"
 
 
