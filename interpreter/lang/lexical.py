@@ -19,15 +19,15 @@ Comments are handled in session.py: there is no dedicated Grammar class for comm
 from abc import abstractmethod, ABC
 from copy import deepcopy
 
+from lang.error import template
 from lang.numerical import cnumberify, numberify
-from pure.lexical import LambdaTerm, Variable, NormalOrderReducer, PureGrammar
+from pure.lexical import Application, LambdaTerm, Variable, NormalOrderReducer, PureGrammar
 
 
 PureGrammar.illegal.append("--")   # characters for signifying beginning of comment
 PureGrammar.illegal.append("#")    # character for signifying import statement
 PureGrammar.illegal.append("\"")   # character that surrounds filepath in import statement
 PureGrammar.illegal.append(":=")   # characters for declaring a named func/define statements
-PureGrammar.illegal.append("EOF")  # characters for signifying end of line in command-line mode
 
 
 class Grammar(ABC):
@@ -65,7 +65,7 @@ class Grammar(ABC):
             subclass = globals()[subclass_name.__name__]
             if subclass.check_grammar(expr, original_expr):
                 return subclass(expr, original_expr)
-        raise SyntaxError(f"'{original_expr}' is not valid lc grammar")
+        raise ValueError(template("'{}' is not valid lc grammar", original_expr))
 
     def __repr__(self):
         return f"{self._cls}('{self.expr}')"
@@ -88,7 +88,6 @@ class ImportStmt(Grammar):
 
     @staticmethod
     def check_grammar(expr, original_expr):
-        original_expr = Grammar.preprocess(original_expr)
         expr = Grammar.preprocess(expr)
 
         if not expr.startswith("#import"):
@@ -101,7 +100,7 @@ class ImportStmt(Grammar):
             assert path.startswith("\"") and path.endswith("\"")
 
         except (AssertionError, ValueError):
-            raise SyntaxError(f"'{original_expr}' has invalid import statement syntax")
+            raise SyntaxError(template("#import expects \"FILENAME\""))
 
         return True
 
@@ -111,13 +110,12 @@ class DefineStmt(Grammar):
     ALIASES = {"<lambda>": "λ", "<declare>": ":=", "<hash>": "#"}
 
     def __init__(self, expr, original_expr):
-        super().__init__(expr,original_expr)
+        super().__init__(expr, original_expr)
 
         __, self.to_replace, self.replacement = self.expr.split(" ")
 
     @staticmethod
     def check_grammar(expr, original_expr):
-        original_expr = Grammar.preprocess(original_expr)
         expr = Grammar.preprocess(expr)
 
         if not expr.startswith("#define"):
@@ -132,7 +130,7 @@ class DefineStmt(Grammar):
             assert not any(char in replacement for char in PureGrammar.illegal)
 
         except (AssertionError, ValueError):
-            raise SyntaxError(f"'{original_expr}' has invalid define statement syntax")
+            raise SyntaxError(template("#define expects REPLACEMENT TO_REPLACE"))
 
         return True
 
@@ -160,11 +158,10 @@ class NamedFunc(Grammar):
         cnumberify(self.term)
 
         if self.name in self.term.flattened:
-            raise SyntaxError("recursion not supported in lambda calculus")
+            raise SyntaxError(template("recursive definitions not supported", self.term))
 
     @staticmethod
     def check_grammar(expr, original_expr):
-        original_expr = Grammar.preprocess(original_expr)
         expr = Grammar.preprocess(expr)
 
         # check 1: is ":=" in expr?
@@ -172,19 +169,24 @@ class NamedFunc(Grammar):
         if eq == -1:
             return False
         elif eq != expr.rfind(":="):
-            raise SyntaxError(f"'{original_expr}' contains stray ':='")
+            start = original_expr.rfind(":=")
+            raise SyntaxError(template("'{}' contains stray ':='", original_expr, start=start, end=start + 2))
 
         lval, rval = expr.split(":=")
 
         # check 2: is r-value a LambdaTerm?
-        if not LambdaTerm.infer_type(rval):
-            raise SyntaxError(f"r-value of '{original_expr}' is not a valid LambdaTerm")
+        if not LambdaTerm.infer_type(rval, original_expr):
+            msg = "r-value of '{}' is not a valid LambdaTerm"
+            raise SyntaxError(template(msg, original_expr, start=original_expr.index(rval)))
 
-        # check 3: is l-value a Variable?
-        if LambdaTerm.infer_type(lval) is not Variable:
-            raise SyntaxError(f"l-value of '{original_expr}' is not a valid Variable")
+        # check 3: is l-value a Variable/number?
+        if LambdaTerm.infer_type(lval, original_expr) is not Variable:
+            msg = "l-value of '{}' is not a valid Variable"
+            raise SyntaxError(template(msg, original_expr, end=original_expr.index(":=")))
+
         elif PureGrammar.preprocess(lval).isdigit():
-            raise SyntaxError(f"l-value of '{original_expr}' is a real number")
+            msg = "l-value of '{}' is a real number"
+            raise SyntaxError(template(msg, original_expr, end=original_expr.index(":=")))
 
         return True
 
@@ -219,12 +221,12 @@ class ExecStmt(Grammar):
 
     def __init__(self, expr, original_expr):
         super().__init__(expr, original_expr)
-        self.term = NormalOrderReducer(expr)
+        self.term = NormalOrderReducer(expr, original_expr)
         cnumberify(self.term)
 
     @staticmethod
     def check_grammar(expr, original_expr):
-        return LambdaTerm.infer_type(expr) is not None
+        return LambdaTerm.infer_type(expr) is not None #, original_expr) is not None
 
     def execute(self):
         """Running an ExecStmt is equivalent to beta-reducing its term."""

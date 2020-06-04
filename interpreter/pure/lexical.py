@@ -32,21 +32,26 @@ means that function application must be separated by spaces or parentheses.
 from abc import abstractmethod, ABC
 from copy import deepcopy
 
+from lang.error import template
+
 
 class PureGrammar(ABC):
     """Superclass that represents any character/set of characters present in pure lambda calculus."""
     illegal = []
     SUBS = ["\u2080", "\u2081", "\u2082", "\u2083", "\u2084", "\u2085", "\u2086", "\u2087", "\u2088", "\u2089"]
 
-    def __init__(self, expr):
-        """Does not provide grammar check: call check_grammar manually before instantiating PureGrammar obj."""
+    def __init__(self, expr, original_expr):
+        """Does not provide grammar check: call check_grammar manually before instantiating PureGrammar obj.
+        original_expr is used for better error messages.
+        """
+        self.original_expr = original_expr.strip()
         self.expr = PureGrammar.preprocess(expr)
         self._cls = type(self).__name__
         self.nodes = []
 
     @staticmethod
     @abstractmethod
-    def check_grammar(expr, preprocess=True):
+    def check_grammar(expr, original_expr, preprocess=True):
         """"This method should check expr's top-level grammar and return whether or not it is valid. It should also
         raise a SyntaxError if expr's top-level grammar is similar to the accepted grammar but syntactically invalid.
         """
@@ -68,11 +73,13 @@ class PureGrammar(ABC):
     def preprocess(original_expr):
         """Strips surrounding whitespace and outer parentheses (if any) from expr."""
         if not original_expr:
-            raise SyntaxError("Lambda term cannot be empty")
+            raise ValueError(template("Lambda term cannot be empty", internal=True))
 
         for char in PureGrammar.illegal:
             if char in original_expr:
-                raise SyntaxError(f"'{original_expr}' contains illegal character '{char}'")
+                pos = original_expr.index(char)
+                msg = "'{}' contains reserved character '{}'"
+                raise SyntaxError(template(msg, (original_expr, char), start=pos, end=pos + 1))
 
         expr = original_expr.strip()
         if expr[0] + expr[-1] == "()" and PureGrammar.are_parens_balanced(expr[1:-1]):
@@ -113,11 +120,14 @@ class Builtin(PureGrammar):
     TOKENS = ["λ", ".", "(", ")"]
 
     @staticmethod
-    def check_grammar(expr, preprocess=True):
+    def check_grammar(expr, original_expr, preprocess=True):
         if len(expr) == 1:
             return expr in Builtin.TOKENS
         if all(char in Builtin.TOKENS for char in expr):
-            raise SyntaxError(f"'{expr}' has stray builtins")
+            for idx, char in enumerate(original_expr):  # for loop is just used for better error msg
+                if char in Builtin.TOKENS:
+                    msg = "'{}' has stray builtin '{}'"
+                    raise SyntaxError(template(msg, (original_expr, char), start=idx, end=idx + 1))
         return False
 
 
@@ -126,12 +136,12 @@ class LambdaTerm(PureGrammar):
     will allow a syntax tree to be built.
     """
 
-    def __init__(self, expr):
+    def __init__(self, expr, original_expr=None):
         """In-place recursive generation of syntax tree from a single LambdaTerm object. No unit test for this method,
         mostly because it's annoying to write one. However, assuming tokenize and tokenizable work, the only part
         of this method that could possibly go wrong is the recursion, so no need for a test here.
         """
-        super().__init__(expr)
+        super().__init__(expr, original_expr if original_expr else expr)
         self.bound = []
         self._flattened = {}
 
@@ -200,20 +210,22 @@ class LambdaTerm(PureGrammar):
         return self._flattened
 
     @classmethod
-    def generate_tree(cls, expr, preprocess=True):
-        """Converts expr to the proper LambdaTerm type, raises SyntaxError if expr is not a valid LambdaType."""
+    def generate_tree(cls, expr, original_expr=None, preprocess=True):
+        """Converts expr to the proper LambdaTerm type, raises SyntaxError if expr is not a valid LambdaType.
+        original_expr is used for displaying error messages.
+        """
         for subclass_name in cls.__subclasses__():
             subclass = globals()[subclass_name.__name__]
-            if subclass.check_grammar(expr, preprocess):
-                return subclass(expr)
-        raise SyntaxError(f"'{expr}' not valid LambdaTerm grammar")
+            if subclass.check_grammar(expr, original_expr, preprocess):
+                return subclass(expr, original_expr)
+        raise SyntaxError(template("'{}' is not valid λ-term grammar", original_expr))
 
     @classmethod
-    def infer_type(cls, expr, preprocess=True):
+    def infer_type(cls, expr, original_expr=None, preprocess=True):
         """Similar to generate_tree, but instead of generating a tree, just checks grammar of all subclasses."""
         for subclass_name in cls.__subclasses__():
             subclass = globals()[subclass_name.__name__]
-            if subclass.check_grammar(expr, preprocess):
+            if subclass.check_grammar(expr, original_expr, preprocess):
                 return subclass
 
     def left_outer_redex(self):
@@ -238,7 +250,7 @@ class LambdaTerm(PureGrammar):
     def set(self, idxs, node):
         """Sets node at positions specified by idxs. idxs=[] will raise an error."""
         if not idxs:
-            raise ValueError("idxs cannot be empty")
+            raise ValueError(template("idxs cannot be empty", internal=True))
 
         this, *others = idxs
         if not others:
@@ -259,7 +271,7 @@ class Variable(LambdaTerm):
     INVALID = Builtin.TOKENS + [" "]
 
     @staticmethod
-    def check_grammar(expr, preprocess=True):
+    def check_grammar(expr, original_expr, preprocess=True):
         if preprocess:
             expr = PureGrammar.preprocess(expr)
         if not any(char in Builtin.TOKENS + [" "] for char in expr):
@@ -272,6 +284,7 @@ class Variable(LambdaTerm):
     def alpha_convert(self, var, new_arg):
         if self == var:
             self.expr = new_arg.expr
+            self.original_expr = new_arg.original_expr
 
     def sub(self, var, new_term):
         """Beta conversion is similar to alpha conversion for Variables, but types can change."""
@@ -298,15 +311,15 @@ class Variable(LambdaTerm):
         """Returns var with subscript of n."""
         while var[-1] in PureGrammar.SUBS:
             var = var[:-1]  # remove subscripts
-        str_num = PureGrammar.preprocess(str(num))
-        return cls(var + "".join(PureGrammar.SUBS[int(digit)] for digit in str_num))
+        subscripted = var + "".join(PureGrammar.SUBS[int(digit)] for digit in PureGrammar.preprocess(str(num)))
+        return cls(subscripted, subscripted)
 
 
 class Abstraction(LambdaTerm):
     """Abstraction: the basic datatype in lambda calculus."""
 
     @staticmethod
-    def check_grammar(expr, preprocess=True):
+    def check_grammar(expr, original_expr, preprocess=True):
         """This implementation of Abstraction differs from the actual lambda calculus definition.
         - Actual Abstraction format: "λ" <Variable> "." <LambdaTerm> (optional parentheses not shown)
         - Accepted Abstraction format: "λ" <Variable> "." <anything> (optional parentheses not shown)
@@ -322,29 +335,41 @@ class Abstraction(LambdaTerm):
 
         if bind == decl:
             return False
+
         elif expr.count("λ") != expr.count(".") or (bind != -1 and decl == -1) or (decl != -1 and bind == -1):
-            raise SyntaxError(f"'{expr}' has mismatched binds/declarators")
+            msg = "'{}' has mismatched binds/declarators"
+            start = max(original_expr.find("λ"), original_expr.find("."))
+            raise SyntaxError(template(msg, original_expr, start=start, end=start + 1))
+
         elif decl < bind:
-            raise SyntaxError(f"'{expr}' has declarator before bind")
+            msg = "'{}' has declarator before bind"
+            decl = original_expr.find(".")
+            raise SyntaxError(template(msg, original_expr, start=decl, end=decl + 1))
+
         elif bind != 0:
             return False
 
         # check 2: is bound variable valid?
         arg = expr[expr.index("λ") + 1:expr.index(".")]
-        if not Variable.check_grammar(arg, False):
+        if not Variable.check_grammar(arg, original_expr, False):
             return False
-        elif any(Builtin.check_grammar(char) for char in arg):
-            raise SyntaxError(f"'{expr}' contains an illegal bound variable")
+
+        elif any(Builtin.check_grammar(char, original_expr) for char in arg):
+            start = original_expr.index("λ") + 1
+            end = original_expr.index(".")
+            raise SyntaxError(template("'{}' contains an illegal bound variable", original_expr, start=start, end=end))
 
         # check 3: is body valid?
         body = expr[expr.index(".") + 1:]
-        if len(body) == 0 or all(Builtin.check_grammar(char) for char in body):
-            raise SyntaxError(f"'{expr}' contains an illegal abstraction body")
+        if len(body) == 0 or all(Builtin.check_grammar(char, original_expr) for char in body):
+            start = original_expr[original_expr.index(".") + 1:]
+            raise SyntaxError(template("'{}' contains an illegal abstraction body", original_expr, start=start))
+
         return True
 
     def tokenize(self):
-        arg = Variable(self.expr[self.expr.index("λ") + 1:self.expr.index(".")])
-        body = LambdaTerm.generate_tree(self.expr[self.expr.index(".") + 1:])
+        arg = Variable(self.expr[self.expr.index("λ") + 1:self.expr.index(".")], self.original_expr)
+        body = LambdaTerm.generate_tree(self.expr[self.expr.index(".") + 1:], self.original_expr)
 
         self.nodes = [arg, body]
 
@@ -413,7 +438,7 @@ class Application(LambdaTerm):
     """Application of arbitrary number of Abstractions/Variables."""
 
     @staticmethod
-    def check_grammar(expr, preprocess=True):
+    def check_grammar(expr, original_expr, preprocess=True):
         """This implementation of Application differs from the actual lambda calculus definition.
         - Actual Application format: <LambdaTerm>+ (grouped by parentheses and spaces)
         - Accepted Application format: anything but other LambdaTerms, grouped correctly by parens/spaces
@@ -423,16 +448,18 @@ class Application(LambdaTerm):
 
         # check 1: are parentheses balanced?
         if not PureGrammar.are_parens_balanced(expr):
-            raise SyntaxError(f"'{expr}' has mismatched parentheses")
+            raise SyntaxError(template("'{}' has mismatched parentheses", original_expr))
 
         # check 2: are there spaces or parentheses in expr?
         if " " not in expr and ("(" not in expr or ")" not in expr):
             return False
 
         # check 3: is expr an Builtin, Variable, or Abstraction?
-        is_builtin = Builtin.check_grammar(expr)
-        is_other_lambdaterm = Variable.check_grammar(expr, False) or Abstraction.check_grammar(expr, False)
-        return not is_builtin and not is_other_lambdaterm
+        is_builtin = Builtin.check_grammar(expr, original_expr, False)
+        is_variable = Variable.check_grammar(expr, original_expr, False)
+        is_abstraction = Abstraction.check_grammar(expr, original_expr, False)
+
+        return not is_builtin and not is_variable and not is_abstraction
 
     def tokenize(self):
         bind_pos = -1
@@ -447,19 +474,22 @@ class Application(LambdaTerm):
 
             paren_balance = to_iterate.count("(") == to_iterate.count(")")
             past_bind = bind_pos != -1 and idx > bind_pos
-            multichar_var = Variable.check_grammar(self.expr[idx - 1:])
+            multichar_var = Variable.check_grammar(self.expr[idx - 1:], self.original_expr)
 
             initial_tests = paren_balance and not past_bind and not multichar_var
 
-            if initial_tests and LambdaTerm.infer_type(to_iterate, False) is not None:
+            if initial_tests and LambdaTerm.infer_type(to_iterate, self.original_expr, False) is not None:
                 start_right_child = idx
                 break
 
         left_child, right_child = self.expr[:start_right_child], self.expr[start_right_child:]
         if left_child == right_child == self.expr:
-            raise SyntaxError(f"'{self.expr}' is invalid LambdaTerm grammar")
+            raise SyntaxError(template("'{}' is invalid LambdaTerm grammar", self.original_expr))
 
-        self.nodes = [LambdaTerm.generate_tree(left_child), LambdaTerm.generate_tree(right_child)]
+        self.nodes = [
+            LambdaTerm.generate_tree(left_child, self.original_expr),
+            LambdaTerm.generate_tree(right_child, self.original_expr)
+        ]
 
     def alpha_convert(self, var, new_arg):
         left, right = self.nodes
@@ -504,8 +534,7 @@ class NormalOrderReducer:
     """Implements normal-order beta reduction of a syntax tree. Used instead of LambdaTerm in lang."""
 
     def __init__(self, expr, reduce=False):
-        self._expr = expr
-        self.tree = LambdaTerm.generate_tree(self._expr)
+        self.tree = LambdaTerm.generate_tree(expr)
 
         self.reduced = False
         if reduce:
@@ -514,6 +543,7 @@ class NormalOrderReducer:
     def beta_reduce(self):
         """In-place normal-order beta reduction of self.tree."""
         redex, redex_path = self.tree.left_outer_redex()
+
         while redex_path is not None:
             abstraction, new_term = redex.nodes
             arg, body = abstraction.nodes
