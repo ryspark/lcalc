@@ -153,7 +153,7 @@ class NamedFunc(Grammar):
         super().__init__(expr, original_expr)
 
         name, term = self.expr.split(":=")
-        self.name = Variable(name)
+        self.name = Variable(name, original_expr)
         self.term = NormalOrderReducer(term)
         cnumberify(self.term)
 
@@ -174,19 +174,19 @@ class NamedFunc(Grammar):
 
         lval, rval = expr.split(":=")
 
-        # check 2: is r-value a LambdaTerm?
-        if not LambdaTerm.infer_type(rval, original_expr):
-            msg = "r-value of '{}' is not a valid LambdaTerm"
-            raise SyntaxError(template(msg, original_expr, start=original_expr.index(rval)))
-
-        # check 3: is l-value a Variable/number?
+        # check 2: is l-value a Variable/number?
         if LambdaTerm.infer_type(lval, original_expr) is not Variable:
             msg = "l-value of '{}' is not a valid Variable"
             raise SyntaxError(template(msg, original_expr, end=original_expr.index(":=")))
 
-        elif PureGrammar.preprocess(lval).isdigit():
+        elif PureGrammar.preprocess(lval, original_expr).isdigit():
             msg = "l-value of '{}' is a real number"
             raise SyntaxError(template(msg, original_expr, end=original_expr.index(":=")))
+
+        # check 3: is r-value a LambdaTerm?
+        if not LambdaTerm.infer_type(rval, original_expr):
+            msg = "r-value of '{}' is not a valid LambdaTerm"
+            raise SyntaxError(template(msg, original_expr, start=original_expr.index(rval)))
 
         return True
 
@@ -226,7 +226,7 @@ class ExecStmt(Grammar):
 
     @staticmethod
     def check_grammar(expr, original_expr):
-        return LambdaTerm.infer_type(expr) is not None #, original_expr) is not None
+        return LambdaTerm.infer_type(expr, original_expr) is not None
 
     def execute(self):
         """Running an ExecStmt is equivalent to beta-reducing its term."""

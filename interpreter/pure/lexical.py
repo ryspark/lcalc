@@ -45,7 +45,7 @@ class PureGrammar(ABC):
         original_expr is used for better error messages.
         """
         self.original_expr = original_expr.strip()
-        self.expr = PureGrammar.preprocess(expr)
+        self.expr = PureGrammar.preprocess(expr, original_expr)
         self._cls = type(self).__name__
         self.nodes = []
 
@@ -70,24 +70,27 @@ class PureGrammar(ABC):
         return parens_balance == 0
 
     @staticmethod
-    def preprocess(original_expr):
+    def preprocess(pre_expr, original_expr=None):
         """Strips surrounding whitespace and outer parentheses (if any) from expr."""
         if not original_expr:
+            original_expr = pre_expr
+
+        if not pre_expr:
             raise ValueError(template("Lambda term cannot be empty", internal=True))
 
         for char in PureGrammar.illegal:
-            if char in original_expr:
-                pos = original_expr.index(char)
+            if char in pre_expr:
+                pos = pre_expr.index(char)
                 msg = "'{}' contains reserved character '{}'"
                 raise SyntaxError(template(msg, (original_expr, char), start=pos, end=pos + 1))
 
-        expr = original_expr.strip()
+        expr = pre_expr.strip()
         if expr[0] + expr[-1] == "()" and PureGrammar.are_parens_balanced(expr[1:-1]):
             expr = expr[1:-1]
 
-        if original_expr == expr:
-            return original_expr
-        return PureGrammar.preprocess(expr)
+        if pre_expr == expr:
+            return pre_expr
+        return PureGrammar.preprocess(expr, original_expr)
 
     def display(self, indents=0):
         """Recursively displays PureGrammar tree with readable format.
@@ -273,7 +276,7 @@ class Variable(LambdaTerm):
     @staticmethod
     def check_grammar(expr, original_expr, preprocess=True):
         if preprocess:
-            expr = PureGrammar.preprocess(expr)
+            expr = PureGrammar.preprocess(expr, original_expr)
         if not any(char in Builtin.TOKENS + [" "] for char in expr):
             return not any(char in expr for char in PureGrammar.illegal)
         return False
@@ -327,7 +330,7 @@ class Abstraction(LambdaTerm):
         The reason for this discrepancy is to delegate recursive token parsing to LambdaAST.
         """
         if preprocess:
-            expr = PureGrammar.preprocess(expr)
+            expr = PureGrammar.preprocess(expr, original_expr)
 
         # check 1: are required Builtins (λ, .) correctly placed and matched within expr?
         bind = expr.find("λ")
@@ -444,7 +447,7 @@ class Application(LambdaTerm):
         - Accepted Application format: anything but other LambdaTerms, grouped correctly by parens/spaces
         """
         if preprocess:
-            expr = PureGrammar.preprocess(expr)
+            expr = PureGrammar.preprocess(expr, original_expr)
 
         # check 1: are parentheses balanced?
         if not PureGrammar.are_parens_balanced(expr):
