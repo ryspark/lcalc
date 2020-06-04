@@ -42,14 +42,20 @@ class Shell(cmd.Cmd):
                     print(self.sess.pop())
 
     def do_help(self, arg):
-        """Doesnt return docs, but rather a short intro."""
-        print("Welcome to the lc interpreter!\n\n"
-              "Lambda calculus is a Turing-complete language created by Alonzo Church. This \n"
-              "interpreter supports pure lambda calculus as imagined by Church as well as \n"
-              "named functions, #import statements, and #define statements.\n\n"
-              "Try it out by typing 'I := λx.x'.This will bind the lambda term 'λx.x' to a \n"
-              "name 'I'. Next, try typing 'I y'. This will apply 'I' to 'y', giving 'y' as \n"
-              "the result.")
+        """Doesn't return docs, but rather a short intro."""
+        print(
+            "Welcome to the lc interpreter!\n\n"
+            "Lambda calculus is a Turing-complete language created by Alonzo Church. This \n"
+            "interpreter supports pure lambda calculus as imagined by Church as well as \n"
+            "named functions, #import statements, and #define statements.\n\n"
+            "Try it out by typing 'I := λx.x'.This will bind the lambda term 'λx.x' to a \n"
+            "name 'I'. Next, try typing 'I y'. This will apply 'y' to 'λx.x', giving 'y' as \n"
+            "the result.\n\n"
+            "This project was created solely for fun and to give the author a sense of how \n"
+            "powerful lambda calculus can be. As a result, nothing is optimized (eg: \n"
+            "numbers are implemented as Church numerals, so even basic arithmetic is \n"
+            "*extremely* slow)."
+        )
 
     def emptyline(self):
         """Do not repeat previous command on empty line."""
