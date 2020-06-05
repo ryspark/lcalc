@@ -12,7 +12,7 @@ Below is an example program to compute the sum of 50 and 50.
 + 50 50 -- will output '100'
 ``` 
 
-Everything (besides `#import`, #define`, and named functions) is implemented in pure lambda calculus, making even basic
+Everything (besides `#import`, `#define`, and named functions) is implemented in pure lambda calculus, making even basic
 arithmetic *extremely* slow.
 
 ## To-do:

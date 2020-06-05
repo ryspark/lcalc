@@ -1,12 +1,7 @@
-#import "common"
-#define lambda <lambda>
+(λx.λy.y x)y
+-- (λm.λn.((n (λn.λf.λx.(f ((n f) x)))) m)) (λf.λx.(f (f (x)))) (λf.λx.(f (f (x))))
 
-+ 1 1
-* 1 3
-+ 3 2
-** 2 2
+-- (λm.λn.((n (λn.λf.λx.(f ((n f) x)))) m)) (λf.λx.(f (f (f x))))
 
-IF (= 5 4) 1 0
--- this is a comment!
-
-FN := lambda x.I x
+--#import "common"
+--Y
