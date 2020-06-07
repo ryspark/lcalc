@@ -29,6 +29,10 @@ PureGrammar.illegal.append("#")    # character for signifying import statement
 PureGrammar.illegal.append("\"")   # character that surrounds filepath in import statement
 PureGrammar.illegal.append(":=")   # characters for declaring a named func/define statements
 
+PureGrammar.illegal.append("<lambda>")   # '#define' representation for lambda (λ) character
+PureGrammar.illegal.append("<hash>")     # '#define' representation for hash (#) character
+PureGrammar.illegal.append("<declare>")  # '#define' representation for declare (:=) character
+
 
 class Grammar(ABC):
     """Superclass representing any grammar object in lc language."""
@@ -83,8 +87,8 @@ class ImportStmt(Grammar):
     def __init__(self, expr, original_expr=None):
         super().__init__(expr, original_expr)
 
-        __, path = self.expr.split(" ")
-        self.path = path[1:-1]  # get rid of surrounding " "
+        __, *path = self.expr.split(" ")
+        self.path = Grammar.preprocess("".join(path))[1:-1]  # get rid of surrounding " " and whitespace
 
     @staticmethod
     def check_grammar(expr, original_expr):
@@ -94,7 +98,8 @@ class ImportStmt(Grammar):
             return False
 
         try:
-            hash_import, path = expr.split(" ")
+            hash_import, *path = expr.split(" ")
+            path = Grammar.preprocess("".join(path))
 
             assert hash_import == "#import"
             assert path.startswith("\"") and path.endswith("\"")
@@ -112,7 +117,8 @@ class DefineStmt(Grammar):
     def __init__(self, expr, original_expr):
         super().__init__(expr, original_expr)
 
-        __, self.to_replace, self.replacement = self.expr.split(" ")
+        __, *to_replace, self.replacement = self.expr.split(" ")
+        self.to_replace = Grammar.preprocess("".join(to_replace))
 
     @staticmethod
     def check_grammar(expr, original_expr):
@@ -122,12 +128,10 @@ class DefineStmt(Grammar):
             return False
 
         try:
-            hash_define, to_replace, replacement = expr.split(" ")
+            hash_define, *__, replacement = expr.split(" ")
 
             assert hash_define == "#define"
-            assert not any(char.isspace() for char in to_replace)
-            assert not any(char.isspace() for char in replacement)
-            assert not any(char in replacement for char in PureGrammar.illegal)
+            assert not any(phrase in replacement for phrase in PureGrammar.illegal)
 
         except (AssertionError, ValueError):
             raise SyntaxError(template("#define expects REPLACEMENT TO_REPLACE"))
