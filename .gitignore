@@ -7,3 +7,8 @@
 
 # Tests
 tests
+
+# Compiled cython files
+build
+*.c
+*.so
