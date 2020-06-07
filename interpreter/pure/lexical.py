@@ -32,15 +32,8 @@ means that function application must be separated by spaces or parentheses.
 from abc import abstractmethod, ABC
 from copy import deepcopy
 
-# from lang.error import template
-def template(msg, *args, **kwargs):
-    try:
-        exc = args[0]
-        if isinstance(exc, str):
-            exc = [exc]
-        return msg.format(*exc)
-    except (TypeError, IndexError):
-        return msg
+from lang.error import template
+
 
 class PureGrammar(ABC):
     """Superclass that represents any character/set of characters present in pure lambda calculus."""
@@ -153,7 +146,6 @@ class LambdaTerm(PureGrammar):
         self._flattened = {}
 
         self.tokenize()
-        self.update_expr()
         self.generate_bound()
 
     @abstractmethod
@@ -164,14 +156,14 @@ class LambdaTerm(PureGrammar):
         """
 
     @abstractmethod
-    def alpha_convert(self, var, new_arg):
+    def alpha_convert(self, used, bound):
         """Given an abstraction λvar.M, this method renames all free occurences of var in M with new_arg. Proper usage
         of this method is provided in beta_reduce. Assumes var is a Variable and new_arg a LambdaTerm, and should not
         update self.expr with alpha-converted expr (unless self is Variable).
         """
 
     @abstractmethod
-    def sub(self, var, new_term, subscript_cache):
+    def sub(self, var, new_term):
         """Given a redex (λvar.M)new_term, this method returns substitution of all free occurences of x with new_term.
         As with alpha_convert, this method is used in beta_reduce as a helper. Should call update_expr. Note that
         though this method does not perform a deep copy of self before returning, so the substituted and original nodes
@@ -276,25 +268,28 @@ class LambdaTerm(PureGrammar):
 
 class Variable(LambdaTerm):
     """Variable in lambda calculus: character(s) that represent abstractions."""
-    INVALID = Builtin.TOKENS + [" "]
 
     @staticmethod
     def check_grammar(expr, original_expr, preprocess=True):
         if preprocess:
             expr = PureGrammar.preprocess(expr, original_expr)
         if not any(char in Builtin.TOKENS + [" "] for char in expr):
-            return not any(char in expr for char in PureGrammar.illegal)
+            return not any(phrase in expr for phrase in PureGrammar.illegal)
         return False
 
     def tokenize(self):
         """Variables are not tokenizable, so do nothing."""
 
-    def alpha_convert(self, var, new_arg):
-        if self == var:
-            self.expr = new_arg.expr
-            self.original_expr = new_arg.original_expr
+    def alpha_convert(self, used, bound):
+        if self.expr in bound:
+            self.expr = bound[self.expr][-1]
+        elif used.get(self.expr):
+            self.expr = self.get_new_arg(used).expr
 
-    def sub(self, var, new_term, subscript_cache):
+        if self.expr not in used:
+            used[self.expr] = True
+
+    def sub(self, var, new_term):
         """Beta conversion is similar to alpha conversion for Variables, but types can change."""
         if self == var:
             return deepcopy(new_term)  # deepcopy to avoid infinite recursion
@@ -318,14 +313,33 @@ class Variable(LambdaTerm):
     def subscript(cls, var, num):
         """Returns var with subscript of n."""
         subscripted = var + "".join(PureGrammar.SUBS[int(digit)] for digit in PureGrammar.preprocess(str(num)))
-        return cls(subscripted, subscripted)
+        return cls(subscripted)
 
     @staticmethod
-    def strip_subscripts(expr):
-        """Strips subscripts from expr."""
+    def split(expr):
+        """Splits expr into var and subscript."""
+        subscript = []
         while expr[-1] in PureGrammar.SUBS:
-            expr = expr[:-1]  # remove subscripts
-        return expr
+            subscript.insert(0, PureGrammar.SUBS.index(expr[-1]))
+            expr = expr[:-1]
+        return expr, int("".join(str(sub) for sub in subscript)) if subscript else -1
+
+    def get_new_arg(self, used):
+        """Returns the next term that is like arg but isn't in used."""
+        arg, __ = Variable.split(self.expr)
+        max_subscript = -1
+
+        for expr in used:
+            var, subscript = Variable.split(expr)
+            if var == arg and subscript > max_subscript:
+                max_subscript = subscript
+
+        new_arg = Variable.subscript(arg, max_subscript + 1)
+
+        if new_arg.expr not in used:
+            used[new_arg.expr] = True
+
+        return new_arg
 
 
 class Abstraction(LambdaTerm):
@@ -375,7 +389,7 @@ class Abstraction(LambdaTerm):
         # check 3: is body valid?
         body = expr[expr.index(".") + 1:]
         if len(body) == 0 or all(Builtin.check_grammar(char, original_expr) for char in body):
-            start = original_expr[original_expr.index(".") + 1:]
+            start = original_expr.index(".") + 1
             raise SyntaxError(template("'{}' contains an illegal abstraction body", original_expr, start=start))
 
         return True
@@ -386,25 +400,35 @@ class Abstraction(LambdaTerm):
 
         self.nodes = [arg, body]
 
-    def alpha_convert(self, var, new_arg):
+    def alpha_convert(self, used, bound):
+        arg, body = self.nodes
+
+        to_remove = None
+        if arg.expr in used:
+            to_remove = arg.expr
+            new_arg = arg.get_new_arg(used)
+
+            bound[arg.expr] = bound.get(arg.expr, []) + [new_arg.expr]
+            arg.expr = new_arg.expr
+
+        used[arg.expr] = False
+
+        body.alpha_convert(used, bound)
+        self.nodes = [arg, body]
+
+        used[arg.expr] = True
+
+        if to_remove:
+            bound[to_remove].pop()
+            if not bound[to_remove]:
+                del bound[to_remove]
+
+        self.update_expr()
+
+    def sub(self, var, new_term):
         arg, body = self.nodes
         if var != arg:
-            body.alpha_convert(var, new_arg)
-
-    def sub(self, var, new_term, subscript_cache):
-        print(f"Abstraction.sub: \n    expr: {self.expr}\n    var: {var}\n    new_term: {new_term}")
-        arg, body = self.nodes
-        if var != arg:
-            if arg not in new_term.bound:
-                print(f"    old arg: {arg}", end="")
-                new_arg = self.get_new_arg(subscript_cache)
-                print(f" new arg: {new_arg}, new_term.bound: {new_term.bound}")
-
-                body.alpha_convert(arg, new_arg)  # must convert body first because arg changes
-                arg.alpha_convert(arg, new_arg)
-
-            self.nodes = [arg, body.sub(var, new_term, subscript_cache)]
-
+            self.nodes = [arg, body.sub(var, new_term)]
         return self
 
     def generate_bound(self):
@@ -427,28 +451,6 @@ class Abstraction(LambdaTerm):
     @property
     def is_leftmost(self):
         return False
-
-    def get_new_arg(self, subscript_cache):
-        """Returns the next term that is like arg but isn't in subscript cache."""
-        arg, body = self.nodes
-        arg.expr = Variable.strip_subscripts(arg.expr)
-
-        already_used = "".join(subscript_cache)
-        max_subscript = -1
-
-        for idx in range(len(already_used) - 1):
-            char, next_char = already_used[idx], already_used[idx + 1]
-
-            if char == arg.expr and next_char in PureGrammar.SUBS:
-                subscript = PureGrammar.SUBS.index(next_char)
-
-                if subscript > max_subscript:
-                    max_subscript = subscript
-
-        subscripted = Variable.subscript(arg.expr, max_subscript + 1)
-        subscript_cache.append(subscripted.expr)
-
-        return subscripted
 
 
 class Application(LambdaTerm):
@@ -509,14 +511,16 @@ class Application(LambdaTerm):
             LambdaTerm.generate_tree(self.expr[start_right_child:], self.original_expr)
         ]
 
-    def alpha_convert(self, var, new_arg):
+    def alpha_convert(self, used, bound):
         left, right = self.nodes
-        left.alpha_convert(var, new_arg)
-        right.alpha_convert(var, new_arg)
+        left.alpha_convert(used, bound)
+        right.alpha_convert(used, bound)
 
-    def sub(self, var, new_term, subscript_cache):
+        self.update_expr()
+
+    def sub(self, var, new_term):
         """Beta conversion is applied like alpha conversion for Applications."""
-        self.nodes = [node.sub(var, new_term, subscript_cache) for node in self.nodes]
+        self.nodes = [node.sub(var, new_term) for node in self.nodes]
         return self
 
     def generate_bound(self):
@@ -549,28 +553,34 @@ class NormalOrderReducer:
 
     def __init__(self, expr, reduce=False):
         self.tree = LambdaTerm.generate_tree(expr)
-        print(self.tree.expr)
-        self.subscript_cache = []
+
+        self.used = {}
+        self.bound = {}
 
         self.reduced = False
+
         if reduce:
             self.beta_reduce()
 
     def beta_reduce(self):
         """In-place normal-order beta reduction of self.tree."""
-        redex, redex_path = self.tree.left_outer_redex()
+        self.tree.alpha_convert(self.used, self.bound)
 
+        redex, redex_path = self.tree.left_outer_redex()
         while redex_path is not None:
             abstraction, new_term = redex.nodes
             arg, body = abstraction.nodes
 
-            self.set(redex_path, body.sub(arg, new_term, self.subscript_cache))
+            reduced = body.sub(arg, new_term)
+            self.set(redex_path, reduced)
+
             redex, redex_path = self.tree.left_outer_redex()
 
-        self.tree.update_expr()
-        self.tree.expr = PureGrammar.preprocess(self.tree.expr)  # for greater readability
-
+        self.tree.expr = PureGrammar.preprocess(self.tree.expr)
         self.reduced = True
+
+        self.used = {}
+        self.bound = {}
 
     def set(self, idxs, node):
         """Sets self.tree with node at position specified by idxs. An empty list will replace self.tree with node."""
@@ -578,6 +588,7 @@ class NormalOrderReducer:
             self.tree.set(idxs, node)
         except ValueError:
             self.tree = node
+        self.tree.update_expr()
 
     @property
     def flattened(self):
@@ -594,5 +605,8 @@ if __name__ == "__main__":
     import time
 
     s = time.time()
-    print(NormalOrderReducer("(λm.λn.((n (λn.λf.λx.(f ((n f) x)))) m)) (λf.λx.(f (f (f x))))", reduce=True))
+    reducer = NormalOrderReducer("(λx.y λy.y (λy.y) x)y", reduce=True)
+
+    print(f"{'-'*100}")
+    print(reducer)
     print(time.time() - s)
