@@ -52,7 +52,7 @@ class Shell(cmd.Cmd):
             "Welcome to the lc interpreter!\n\n"
             "Lambda calculus is a Turing-complete language created by Alonzo Church. This \n"
             "interpreter supports pure lambda calculus as imagined by Church as well as \n"
-            "named functions, #import statements, and #define statements.\n\n"
+            "named functions, file imports, and define directives.\n\n"
             "Try it out by typing 'I := λx.x'.This will bind the lambda term 'λx.x' to a \n"
             "name 'I'. Next, try typing 'I y'. This will apply 'y' to 'λx.x', giving 'y' as \n"
             "the result.\n\n"
