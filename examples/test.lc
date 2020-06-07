@@ -1,4 +1,8 @@
+#import "common"
+
 (λx.λy.y x)y
++ 2
+
 -- (λm.λn.((n (λn.λf.λx.(f ((n f) x)))) m)) (λf.λx.(f (f (x)))) (λf.λx.(f (f (x))))
 
 -- (λm.λn.((n (λn.λf.λx.(f ((n f) x)))) m)) (λf.λx.(f (f (f x))))

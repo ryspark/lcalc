@@ -290,6 +290,8 @@ class Variable(LambdaTerm):
         if self.expr not in used:
             used[self.expr] = True
 
+        self.update_expr()
+
     def sub(self, var, new_term):
         if self == var:
             return deepcopy(new_term)  # deepcopy to avoid infinite recursion
@@ -429,6 +431,7 @@ class Abstraction(LambdaTerm):
         arg, body = self.nodes
         if var != arg:
             self.nodes = [arg, body.sub(var, new_term)]
+            self.update_expr()
         return self
 
     def generate_bound(self):
@@ -520,6 +523,7 @@ class Application(LambdaTerm):
 
     def sub(self, var, new_term):
         self.nodes = [node.sub(var, new_term) for node in self.nodes]
+        self.update_expr()
         return self
 
     def generate_bound(self):
@@ -550,8 +554,8 @@ class Application(LambdaTerm):
 class NormalOrderReducer:
     """Implements normal-order beta reduction of a syntax tree. Used instead of LambdaTerm in lang."""
 
-    def __init__(self, expr, reduce=False):
-        self.tree = LambdaTerm.generate_tree(expr)
+    def __init__(self, expr, original_expr=None, reduce=False):
+        self.tree = LambdaTerm.generate_tree(expr, original_expr)
 
         self.used = {}
         self.bound = {}

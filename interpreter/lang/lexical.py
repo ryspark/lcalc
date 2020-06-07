@@ -158,7 +158,7 @@ class NamedFunc(Grammar):
 
         name, term = self.expr.split(":=")
         self.name = Variable(name, original_expr)
-        self.term = NormalOrderReducer(term)
+        self.term = NormalOrderReducer(term, original_expr)
         cnumberify(self.term)
 
         if self.name in self.term.flattened:
