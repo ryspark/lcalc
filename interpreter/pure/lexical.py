@@ -127,7 +127,7 @@ class Builtin(PureGrammar):
         if len(expr) == 1:
             return expr in Builtin.TOKENS
         if all(char in Builtin.TOKENS for char in expr):
-            for idx, char in enumerate(original_expr):  # for loop is just used for better error msg
+            for idx, char in enumerate(original_expr):
                 if char in Builtin.TOKENS:
                     msg = "'{}' has stray builtin '{}'"
                     raise SyntaxError(template(msg, (original_expr, char), start=idx, end=idx + 1))
@@ -157,9 +157,10 @@ class LambdaTerm(PureGrammar):
 
     @abstractmethod
     def alpha_convert(self, used, bound):
-        """Given an abstraction λvar.M, this method renames all free occurences of var in M with new_arg. Proper usage
-        of this method is provided in beta_reduce. Assumes var is a Variable and new_arg a LambdaTerm, and should not
-        update self.expr with alpha-converted expr (unless self is Variable).
+        """Given used dictionary (arg: whether or not in arg's abstraction body) and bound dictionary
+        (arg: [new args, reverse precedence]), this method should rename all variables that would become ambiguous
+        during beta reduction. Should be run after generate_tree and before sub. Alternative to alpha reduction during
+        sub.
         """
 
     @abstractmethod
@@ -177,7 +178,7 @@ class LambdaTerm(PureGrammar):
 
     @abstractmethod
     def update_expr(self):
-        """Updates self.expr from self.nodes. Used after alpha_convert but not by it."""
+        """Updates self.expr from self.nodes. Used during alpha_convert."""
 
     @property
     @abstractmethod
@@ -290,7 +291,6 @@ class Variable(LambdaTerm):
             used[self.expr] = True
 
     def sub(self, var, new_term):
-        """Beta conversion is similar to alpha conversion for Variables, but types can change."""
         if self == var:
             return deepcopy(new_term)  # deepcopy to avoid infinite recursion
         return self
@@ -519,7 +519,6 @@ class Application(LambdaTerm):
         self.update_expr()
 
     def sub(self, var, new_term):
-        """Beta conversion is applied like alpha conversion for Applications."""
         self.nodes = [node.sub(var, new_term) for node in self.nodes]
         return self
 
@@ -599,14 +598,3 @@ class NormalOrderReducer:
 
     def __str__(self):
         return self.tree.display()
-
-
-if __name__ == "__main__":
-    import time
-
-    s = time.time()
-    reducer = NormalOrderReducer("(λx.y λy.y (λy.y) x)y", reduce=True)
-
-    print(f"{'-'*100}")
-    print(reducer)
-    print(time.time() - s)
