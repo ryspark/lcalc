@@ -19,7 +19,7 @@ Comments are handled in session.py: there is no dedicated Grammar class for comm
 from abc import abstractmethod, ABC
 from copy import deepcopy
 
-from lang.error import template
+from lang.error import GenericException
 from lang.numerical import cnumberify, numberify
 from pure.lexical import Application, LambdaTerm, Variable, NormalOrderReducer, PureGrammar
 
@@ -69,7 +69,7 @@ class Grammar(ABC):
             subclass = globals()[subclass_name.__name__]
             if subclass.check_grammar(expr, original_expr):
                 return subclass(expr, original_expr)
-        raise ValueError(template("'{}' is not valid lc grammar", original_expr))
+        raise GenericException("'{}' is not valid lc grammar", original_expr)
 
     def __repr__(self):
         return f"{self._cls}('{self.expr}')"
@@ -105,7 +105,7 @@ class ImportStmt(Grammar):
             assert path.startswith("\"") and path.endswith("\"")
 
         except (AssertionError, ValueError):
-            raise SyntaxError(template("#import expects \"FILENAME\""))
+            raise GenericException("#import expects \"FILENAME\"")
 
         return True
 
@@ -131,10 +131,10 @@ class DefineStmt(Grammar):
             hash_define, *__, replacement = expr.split(" ")
 
             assert hash_define == "#define"
-            assert not any(phrase in replacement for phrase in PureGrammar.illegal)
+            assert not any(phrase in replacement and phrase not in DefineStmt.ALIASES for phrase in PureGrammar.illegal)
 
         except (AssertionError, ValueError):
-            raise SyntaxError(template("#define expects REPLACEMENT TO_REPLACE"))
+            raise GenericException("#define expects REPLACEMENT TO_REPLACE")
 
         return True
 
@@ -162,7 +162,7 @@ class NamedFunc(Grammar):
         cnumberify(self.term)
 
         if self.name in self.term.flattened:
-            raise SyntaxError(template("recursive definitions not supported", self.term))
+            raise GenericException("recursive definitions not supported", self.term)
 
     @staticmethod
     def check_grammar(expr, original_expr):
@@ -174,23 +174,23 @@ class NamedFunc(Grammar):
             return False
         elif eq != expr.rfind(":="):
             start = original_expr.rfind(":=")
-            raise SyntaxError(template("'{}' contains stray ':='", original_expr, start=start, end=start + 2))
+            raise GenericException("'{}' contains stray ':='", original_expr, start=start, end=start + 2)
 
         lval, rval = expr.split(":=")
 
         # check 2: is l-value a Variable/number?
         if LambdaTerm.infer_type(lval, original_expr) is not Variable:
             msg = "l-value of '{}' is not a valid Variable"
-            raise SyntaxError(template(msg, original_expr, end=original_expr.index(":=")))
+            raise GenericException(msg, original_expr, end=original_expr.index(":="))
 
         elif PureGrammar.preprocess(lval, original_expr).isdigit():
             msg = "l-value of '{}' is a real number"
-            raise SyntaxError(template(msg, original_expr, end=original_expr.index(":=")))
+            raise GenericException(msg, original_expr, end=original_expr.index(":="))
 
         # check 3: is r-value a LambdaTerm?
         if not LambdaTerm.infer_type(rval, original_expr):
             msg = "r-value of '{}' is not a valid LambdaTerm"
-            raise SyntaxError(template(msg, original_expr, start=original_expr.index(rval)))
+            raise GenericException(msg, original_expr, start=original_expr.index(rval))
 
         return True
 

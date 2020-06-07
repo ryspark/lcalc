@@ -32,7 +32,7 @@ means that function application must be separated by spaces or parentheses.
 from abc import abstractmethod, ABC
 from copy import deepcopy
 
-from lang.error import template
+from lang.error import GenericException
 
 
 class PureGrammar(ABC):
@@ -76,13 +76,13 @@ class PureGrammar(ABC):
             original_expr = pre_expr
 
         if not pre_expr:
-            raise ValueError(template("Lambda term cannot be empty", internal=True))
+            raise GenericException("λ-term cannot be empty", original_expr)
 
         for char in PureGrammar.illegal:
             if char in pre_expr:
                 pos = pre_expr.index(char)
                 msg = "'{}' contains reserved character '{}'"
-                raise SyntaxError(template(msg, (original_expr, char), start=pos, end=pos + 1))
+                raise GenericException(msg, (original_expr, char), start=pos, end=pos + 1)
 
         expr = pre_expr.strip()
         if expr[0] + expr[-1] == "()" and PureGrammar.are_parens_balanced(expr[1:-1]):
@@ -129,8 +129,7 @@ class Builtin(PureGrammar):
         if all(char in Builtin.TOKENS for char in expr):
             for idx, char in enumerate(original_expr):
                 if char in Builtin.TOKENS:
-                    msg = "'{}' has stray builtin '{}'"
-                    raise SyntaxError(template(msg, (original_expr, char), start=idx, end=idx + 1))
+                    raise GenericException("'{}' has stray builtin '{}'", (original_expr, char), start=idx, end=idx + 1)
         return False
 
 
@@ -219,7 +218,7 @@ class LambdaTerm(PureGrammar):
             subclass = globals()[subclass_name.__name__]
             if subclass.check_grammar(expr, original_expr, preprocess):
                 return subclass(expr, original_expr)
-        raise SyntaxError(template("'{}' is not valid λ-term grammar", original_expr))
+        raise GenericException("'{}' is not valid λ-term grammar", original_expr)
 
     @classmethod
     def infer_type(cls, expr, original_expr=None, preprocess=True):
@@ -251,7 +250,7 @@ class LambdaTerm(PureGrammar):
     def set(self, idxs, node):
         """Sets node at positions specified by idxs. idxs=[] will raise an error."""
         if not idxs:
-            raise ValueError(template("idxs cannot be empty", internal=True))
+            raise GenericException("idxs cannot be empty", internal=True)
 
         this, *others = idxs
         if not others:
@@ -366,14 +365,12 @@ class Abstraction(LambdaTerm):
             return False
 
         elif expr.count("λ") != expr.count(".") or (bind != -1 and decl == -1) or (decl != -1 and bind == -1):
-            msg = "'{}' has mismatched binds/declarators"
             start = max(original_expr.find("λ"), original_expr.find("."))
-            raise SyntaxError(template(msg, original_expr, start=start, end=start + 1))
+            raise GenericException("'{}' has mismatched binds/declarators", original_expr, start=start, end=start + 1)
 
         elif decl < bind:
-            msg = "'{}' has declarator before bind"
             decl = original_expr.find(".")
-            raise SyntaxError(template(msg, original_expr, start=decl, end=decl + 1))
+            raise GenericException("'{}' has declarator before bind", original_expr, start=decl, end=decl + 1)
 
         elif bind != 0:
             return False
@@ -386,13 +383,13 @@ class Abstraction(LambdaTerm):
         elif any(Builtin.check_grammar(char, original_expr) for char in arg):
             start = original_expr.index("λ") + 1
             end = original_expr.index(".")
-            raise SyntaxError(template("'{}' contains an illegal bound variable", original_expr, start=start, end=end))
+            raise GenericException("'{}' contains an illegal bound variable", original_expr, start=start, end=end)
 
         # check 3: is body valid?
         body = expr[expr.index(".") + 1:]
         if len(body) == 0 or all(Builtin.check_grammar(char, original_expr) for char in body):
             start = original_expr.index(".") + 1
-            raise SyntaxError(template("'{}' contains an illegal abstraction body", original_expr, start=start))
+            raise GenericException("'{}' contains an illegal abstraction body", original_expr, start=start)
 
         return True
 
@@ -470,7 +467,7 @@ class Application(LambdaTerm):
 
         # check 1: are parentheses balanced? (only check if preprocess)
         if preprocess and not PureGrammar.are_parens_balanced(expr):
-            raise SyntaxError(template("'{}' has mismatched parentheses", original_expr))
+            raise GenericException("'{}' has mismatched parentheses", original_expr)
 
         # check 2: are there spaces or parentheses in expr?
         if " " not in expr and ("(" not in expr or ")" not in expr):
@@ -507,7 +504,7 @@ class Application(LambdaTerm):
                 break
 
         if start_right_child is None:
-            raise SyntaxError(template("'{}' is invalid LambdaTerm grammar", self.original_expr))
+            raise GenericException("'{}' is invalid λ-term grammar", self.original_expr)
 
         self.nodes = [
             LambdaTerm.generate_tree(self.expr[:start_right_child], self.original_expr),
@@ -569,6 +566,7 @@ class NormalOrderReducer:
         """In-place normal-order beta reduction of self.tree."""
         self.tree.alpha_convert(self.used, self.bound)
 
+        previous_lens = [len(self.tree.expr)]
         redex, redex_path = self.tree.left_outer_redex()
         while redex_path is not None:
             abstraction, new_term = redex.nodes
@@ -577,6 +575,8 @@ class NormalOrderReducer:
             reduced = body.sub(arg, new_term)
             self.set(redex_path, reduced)
 
+            previous_lens.append(len(self.tree.expr))
+            print(previous_lens)
             redex, redex_path = self.tree.left_outer_redex()
 
         self.tree.expr = PureGrammar.preprocess(self.tree.expr)

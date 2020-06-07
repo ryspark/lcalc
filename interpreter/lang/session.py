@@ -4,7 +4,7 @@ mode or file interpretation mode.
 
 import os
 
-from lang.error import template
+from lang.error import GenericException
 from lang.lexical import DefineStmt, ExecStmt, ImportStmt, Grammar, NamedFunc
 
 
@@ -39,7 +39,7 @@ class Session:
                     for line_num, line in enumerate(file):
                         __, add_to_prev = self.preprocess_line(line, line_num + 1, add_to_prev, exprs)
             except (OSError, IsADirectoryError, FileNotFoundError):
-                raise OSError(template("'{}' could not be opened", path, diagnosis=False))
+                raise GenericException("'{}' could not be opened", path, diagnosis=False)
 
             for expr in exprs:
                 self.add(*expr)
@@ -128,7 +128,7 @@ class Session:
         for idx, func in enumerate(self.scope):
             for node, paths in func.term.flattened.items():
                 if node in funcs and node not in seen:
-                    raise SyntaxError(template("'{}' used prior to definition", node))
+                    raise GenericException("'{}' used prior to definition", node)
                 elif node in funcs:
                     for path in paths:
                         funcs[node].sub(func, path)

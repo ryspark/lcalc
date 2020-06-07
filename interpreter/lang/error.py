@@ -1,5 +1,5 @@
-"""Error handling for lc language. Only SyntaxErrors should be encountered during running: if another type of error is
-raised and makes it all the way to ErrorHandler, it is assumed to be an internal issue.
+"""Error handling for lc language. Only GenericExceptions should be encountered during running: if another type of error
+is raised and makes it all the way to ErrorHandler, it is assumed to be an internal issue.
 """
 
 import sys
@@ -8,17 +8,21 @@ from traceback import print_tb
 from termcolor import colored
 
 
-def template(msg, exprs=None, internal=False, start=0, end=-1, diagnosis=True):
-    """Templates an error message so that it can be used to throw a lc error instead of a Python error. The first
-    element of exprs should be the offending expr that caused the error.
-    """
-    if exprs is None:
-        exprs = ""
-    elif isinstance(exprs, str):
-        exprs = [exprs]
+class GenericException(Exception):
+    """Templates an error message so that it can be used to throw a lc error instead of a Python error."""
 
-    msg = msg.format(*(colored(expr, attrs=["bold"]) for expr in exprs))  # color expr snippets
-    return f"{'i' if internal else ''}|{msg}|{exprs[0] if exprs else ''}|{start}|{end}|{'d' if diagnosis else ''}"
+    def __init__(self, msg, exprs=None, start=0, end=-1, diagnosis=True, internal=False):
+        if exprs is None:
+            exprs = ""
+        if isinstance(exprs, str):
+            exprs = [exprs]
+
+        self.msg = msg.format(*(colored(expr, attrs=["bold"]) for expr in exprs))  # color expr snippets
+        self.expr = exprs[0]  # exprs[0] should be the offending expr that caused the error
+        self.start = start
+        self.end = end if end != -1 else len(self.expr)  # needed for error display
+        self.diagnosis = diagnosis
+        self.internal = internal
 
 
 class ErrorHandler:
@@ -40,31 +44,30 @@ class ErrorHandler:
         """Removes line from traceback given path. Should be called after successful Session run."""
         self.traceback[path] = (None, None)
 
-    def throw_error(self, templated):
+    def throw_error(self, error):
         """Throws error using templated and self.traceback. templated must be a string formatted by template, and
         self.traceback must be a dictionary of file: line_num representing origination of error.
         """
-        internal, msg, expr, start, end, diagnosis = templated.split("|")
-
         error_msg = "Traceback:\n"
         for file, (line, line_num) in self.traceback.items():
             if line:
                 error_msg += f"  File '{file}', line {line_num}:\n"
                 error_msg += f"    {line}\n"
 
-        if internal:
+        if error.internal:
             error_msg += colored("[internal] ", "red", attrs=["bold"])
 
-        error_msg += colored("error: ", "red", attrs=["bold"]) + msg
+        error_msg += colored("error: ", "red", attrs=["bold"]) + error.msg
         print(error_msg)
 
-        if not internal and expr and diagnosis:
-            if end == "-1":
-                end = len(expr)  # needed for counting '~'
+        if not error.internal and error.expr and error.diagnosis:
+            diagnosis = "  " + error.expr[:error.start]
 
-            start, end = int(start), int(end)
-            diagnosis = "  " + expr[:start] + colored(expr[start:end], "red", attrs=["bold"]) + expr[end:] + "\n"
-            diagnosis += "  " + " " * start + colored("^" + "~" * (end - start - 1), "red", attrs=["bold"])
+            diagnosis += colored(error.expr[error.start:error.end], "red", attrs=["bold"])
+            diagnosis += error.expr[error.end:] + "\n"
+
+            diagnosis += "  " + " " * error.start
+            diagnosis += colored("^" + "~" * (error.end - error.start - 1), "red", attrs=["bold"])
 
             print(diagnosis)
 
@@ -77,12 +80,12 @@ class ErrorHandler:
     def __exit__(self, exc_type, exc_val, exc_tb):
         exit = False
         if exc_type is KeyboardInterrupt:
-            self.throw_error(template("keyboard interrupt"))
-        elif exc_type in (SyntaxError, OSError):
-            self.throw_error(str(exc_val))
+            self.throw_error(GenericException("keyboard interrupt"))
+        elif exc_type is GenericException:
+            self.throw_error(exc_val)
         elif exc_type is not None:
             print_tb(exc_tb)
-            self.throw_error(template(f"unknown error: '{exc_type.__name__}: {exc_val}'", internal=True))
+            self.throw_error(GenericException(f"unknown error: '{exc_type.__name__}: {exc_val}'", internal=True))
             exit = True
 
         return not exit

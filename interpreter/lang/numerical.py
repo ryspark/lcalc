@@ -5,7 +5,7 @@ everything pure as possible.
 Source: https://en.wikipedia.org/wiki/Church_encoding#Calculation_with_Church_numerals
 """
 
-from lang.error import template
+from lang.error import GenericException
 from pure.lexical import Abstraction, Variable
 
 
@@ -16,7 +16,7 @@ def cnumber(num):
         num = int(num)
         assert num >= 0
     except (AssertionError, ValueError):
-        raise ValueError(template("expected natural number, got '{}')", num, internal=True))
+        raise GenericException("expected natural number, got '{}')", num, internal=True)
 
     header = "(λf.λx."
     composed = "f (" * num
