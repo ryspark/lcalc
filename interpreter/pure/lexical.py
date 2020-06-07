@@ -32,7 +32,7 @@ means that function application must be separated by spaces or parentheses.
 from abc import abstractmethod, ABC
 from copy import deepcopy
 
-from lang.error import GenericException
+from lang.error import GenericException, warn
 
 
 class PureGrammar(ABC):
@@ -250,13 +250,14 @@ class LambdaTerm(PureGrammar):
     def set(self, idxs, node):
         """Sets node at positions specified by idxs. idxs=[] will raise an error."""
         if not idxs:
-            raise GenericException("idxs cannot be empty", internal=True)
+            raise ValueError("idxs cannot be empty")
 
         this, *others = idxs
         if not others:
             self.nodes[this] = node
         else:
             self.nodes[this].set(others, node)
+            self.update_expr()
 
     def __str__(self):
         return self.display()
@@ -552,7 +553,8 @@ class NormalOrderReducer:
     """Implements normal-order beta reduction of a syntax tree. Used instead of LambdaTerm in lang."""
 
     def __init__(self, expr, original_expr=None, reduce=False):
-        self.tree = LambdaTerm.generate_tree(expr, original_expr)
+        self.original_expr = original_expr if original_expr else expr
+        self.tree = LambdaTerm.generate_tree(expr, self.original_expr)
 
         self.used = {}
         self.bound = {}
@@ -566,18 +568,21 @@ class NormalOrderReducer:
         """In-place normal-order beta reduction of self.tree."""
         self.tree.alpha_convert(self.used, self.bound)
 
-        previous_lens = [len(self.tree.expr)]
+        previous_lens = []
         redex, redex_path = self.tree.left_outer_redex()
+
         while redex_path is not None:
             abstraction, new_term = redex.nodes
             arg, body = abstraction.nodes
 
-            reduced = body.sub(arg, new_term)
-            self.set(redex_path, reduced)
+            self.set(redex_path, body.sub(arg, new_term))
 
             previous_lens.append(len(self.tree.expr))
-            print(previous_lens)
             redex, redex_path = self.tree.left_outer_redex()
+
+            if len(previous_lens) >= 2:
+                if all(previous_lens[idx] < previous_lens[idx + 1] for idx in range(len(previous_lens) - 1)):
+                    warn("{} does not have a beta-normal form", self.original_expr)
 
         self.tree.expr = PureGrammar.preprocess(self.tree.expr)
         self.reduced = True
@@ -591,7 +596,7 @@ class NormalOrderReducer:
             self.tree.set(idxs, node)
         except ValueError:
             self.tree = node
-        self.tree.update_expr()
+            self.tree.update_expr()
 
     @property
     def flattened(self):

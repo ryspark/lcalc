@@ -60,11 +60,14 @@ class Grammar(ABC):
         return expr.rstrip()
 
     @classmethod
-    def infer(cls, expr, original_expr):
+    def infer(cls, expr, original_expr=None):
         """Similar to LambdaTerm's generate_tree, this method infers the type of expr and returns an object of the
         correct grammar subclass. No *args, **kwargs support because any args besides expr are handled internally and
         should not be used.
         """
+        if original_expr is None:
+            original_expr = expr
+
         for subclass_name in cls.__subclasses__():
             subclass = globals()[subclass_name.__name__]
             if subclass.check_grammar(expr, original_expr):
@@ -73,6 +76,9 @@ class Grammar(ABC):
 
     def __repr__(self):
         return f"{self._cls}('{self.expr}')"
+
+    def __str__(self):
+        return self.expr
 
     def __eq__(self, other):
         return isinstance(other, type(self)) and other.expr == self.expr
@@ -157,8 +163,10 @@ class NamedFunc(Grammar):
         super().__init__(expr, original_expr)
 
         name, term = self.expr.split(":=")
-        self.name = Variable(name, original_expr)
-        self.term = NormalOrderReducer(term, original_expr)
+        term = term.strip()
+
+        self.name = Variable(name, term)
+        self.term = NormalOrderReducer(term)
         cnumberify(self.term)
 
         if self.name in self.term.flattened:

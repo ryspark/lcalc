@@ -31,18 +31,12 @@ class Shell(cmd.Cmd):
                 self._tmp_line = ""
                 self.prompt = self._tmp_prompt
 
-                import time
-                s = time.time()
-
                 try:
                     self.sess.add(line, self.line_num)
-                    print(time.time() - s)
                 except ValueError:
                     return  # if line is empty, terminate
-                s = time.time()
-                self.sess.run()
-                print(time.time() - s)
 
+                self.sess.run()
                 if self.sess.results:
                     print(self.sess.pop())
 

@@ -22,7 +22,7 @@ class Session:
         self.defines = []    # list of define directives
         self.scope = []      # list of NamedFuncs that exist in the current session that have not been expanded
         self.memory = []     # list of NamedFuncs that exist in the current session that have been expanded
-        self.to_exec = []    # list of ExecStmts to execute
+        self.to_exec = {}    # dict of line num: ExecStmts to execute
 
         self.flattened = []  # flattened list of all ExecStmt nodes in the current session
         self.results = []    # results after running ExecStmts
@@ -63,16 +63,13 @@ class Session:
 
         return line, line.count("(") > line.count(")")
 
-    def add(self, expr, line_num, original_expr=None):
+    def add(self, expr, line_num):
         """Adds Grammar object to the current session. Beta-reduction is lazy and is delayed until run is called."""
-        if original_expr is None:
-            original_expr = expr
-
-        self.error_handler.register_line(self.path, original_expr, line_num)  # in case error is raised
+        self.error_handler.register_line(self.path, expr, line_num)  # in case error is raised
 
         for stmt in self.defines:
             expr = stmt.replace(expr)
-        stmt = Grammar.infer(expr, original_expr)
+        stmt = Grammar.infer(expr)
 
         if isinstance(stmt, ImportStmt):
             for path in self._get_paths(stmt.path):
@@ -86,12 +83,8 @@ class Session:
             self.scope.append(stmt)
 
         elif isinstance(stmt, ExecStmt):
-            if self.cmd_line:
-                self.to_exec = [stmt]
-                self.flattened = list(stmt.term.tree.flattened.keys())
-            else:
-                self.to_exec.append(stmt)
-                self.flattened.extend(stmt.term.tree.flattened.keys())
+            self.to_exec[line_num] = stmt
+            self.flattened.extend(stmt.term.tree.flattened.keys())
 
         self.error_handler.remove_line(self.path)  # error was not raised
 
@@ -103,12 +96,12 @@ class Session:
 
         for stmt in self.memory:    # reduce/sub iff stmt is used in ExecStmts
             if stmt.name in self.flattened:
-                stmt.sub_all(self.to_exec)
+                stmt.sub_all(self.to_exec.values())
 
-        for stmt in self.to_exec:  # run ExecStmts
+        for line_num, stmt in list(self.to_exec.items()):  # run ExecStmts
             if self.cmd_line:
                 self.results = [stmt.execute()]
-                self.to_exec.remove(stmt)
+                del self.to_exec[line_num]
             else:
                 self.results.append(stmt.execute())
 

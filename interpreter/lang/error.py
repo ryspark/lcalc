@@ -8,10 +8,11 @@ from traceback import print_tb
 from termcolor import colored
 
 
-class GenericException(Exception):
-    """Templates an error message so that it can be used to throw a lc error instead of a Python error."""
+class ErrorMsgParser:
+    """Templates an error/warning message so that it can be used to throw a lc error/warning."""
 
     def __init__(self, msg, exprs=None, start=0, end=-1, diagnosis=True, internal=False):
+        """Parses args for GenericException or warning."""
         if exprs is None:
             exprs = ""
         if isinstance(exprs, str):
@@ -19,10 +20,23 @@ class GenericException(Exception):
 
         self.msg = msg.format(*(colored(expr, attrs=["bold"]) for expr in exprs))  # color expr snippets
         self.expr = exprs[0]  # exprs[0] should be the offending expr that caused the error
-        self.start = start
         self.end = end if end != -1 else len(self.expr)  # needed for error display
+
+        self.start = start
+        self.end = end
         self.diagnosis = diagnosis
         self.internal = internal
+
+
+class GenericException(Exception, ErrorMsgParser):
+    """Just a wrapper around ErrorMsgParser so it can be used as a Python Exception."""
+
+
+class GenericWarning(ErrorMsgParser):
+    """Templates a runtime warning."""
+
+    def warn(*args, **kwargs):
+        """Generates runtime warning given appropriate args."""
 
 
 class ErrorHandler:
@@ -37,15 +51,15 @@ class ErrorHandler:
         self.traceback[path] = (None, None)
 
     def register_line(self, path, line, line_num):
-        """Registers line in traceback given path. Should be called prior to Session run."""
+        """Registers line in traceback given path. Should be called prior to Session add/run."""
         self.traceback[path] = (line, line_num)
 
     def remove_line(self, path):
-        """Removes line from traceback given path. Should be called after successful Session run."""
+        """Removes line from traceback given path. Should be called after successful Session add/run."""
         self.traceback[path] = (None, None)
 
     def throw_error(self, error):
-        """Throws error using templated and self.traceback. templated must be a string formatted by template, and
+        """Throws error or warning using templated and self.traceback. templated must be a GenericException, and
         self.traceback must be a dictionary of file: line_num representing origination of error.
         """
         error_msg = "Traceback:\n"
@@ -78,7 +92,7 @@ class ErrorHandler:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        exit = False
+        do_exit = False
         if exc_type is KeyboardInterrupt:
             self.throw_error(GenericException("keyboard interrupt"))
         elif exc_type is GenericException:
@@ -86,6 +100,6 @@ class ErrorHandler:
         elif exc_type is not None:
             print_tb(exc_tb)
             self.throw_error(GenericException(f"unknown error: '{exc_type.__name__}: {exc_val}'", internal=True))
-            exit = True
+            do_exit = True
 
-        return not exit
+        return not do_exit
