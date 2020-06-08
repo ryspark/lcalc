@@ -155,7 +155,7 @@ class LambdaTerm(PureGrammar):
         """
 
     @abstractmethod
-    def alpha_convert(self, used, bound):
+    def alpha_convert(self, used, bound, current_depth=0):
         """Given used dictionary (arg: whether or not in arg's abstraction body) and bound dictionary
         (arg: [new args, reverse precedence]), this method should rename all variables that would become ambiguous
         during beta reduction. Should be run after generate_tree and before sub. Alternative to alpha reduction during
@@ -255,6 +255,7 @@ class LambdaTerm(PureGrammar):
         this, *others = idxs
         if not others:
             self.nodes[this] = node
+            self.update_expr()
         else:
             self.nodes[this].set(others, node)
             self.update_expr()
@@ -277,14 +278,14 @@ class Variable(LambdaTerm):
     def tokenize(self):
         """Variables are not tokenizable, so do nothing."""
 
-    def alpha_convert(self, used, bound):
+    def alpha_convert(self, used, bound, current_depth=0):
         if self.expr in bound:
             self.expr = bound[self.expr][-1]
-        elif used.get(self.expr):
-            self.expr = self.get_new_arg(used).expr
+        elif used.get(self.expr, current_depth) != current_depth:
+            self.expr = self.get_new_arg(used, current_depth).expr
 
         if self.expr not in used:
-            used[self.expr] = True
+            used[self.expr] = current_depth
 
         self.update_expr()
 
@@ -322,7 +323,7 @@ class Variable(LambdaTerm):
             expr = expr[:-1]
         return expr, int("".join(str(sub) for sub in subscript)) if subscript else -1
 
-    def get_new_arg(self, used):
+    def get_new_arg(self, used, current_depth):
         """Returns the next term that is like arg but isn't in used."""
         arg, __ = Variable.split(self.expr)
         max_subscript = -1
@@ -335,7 +336,7 @@ class Variable(LambdaTerm):
         new_arg = Variable.subscript(arg, max_subscript + 1)
 
         if new_arg.expr not in used:
-            used[new_arg.expr] = True
+            used[new_arg.expr] = current_depth
 
         return new_arg
 
@@ -396,28 +397,24 @@ class Abstraction(LambdaTerm):
 
         self.nodes = [arg, body]
 
-    def alpha_convert(self, used, bound):
+    def alpha_convert(self, used, bound, current_depth=0):
         arg, body = self.nodes
 
-        to_remove = None
+        to_remove = arg.expr
         if arg.expr in used:
-            to_remove = arg.expr
-            new_arg = arg.get_new_arg(used)
+            new_arg = arg.get_new_arg(used, current_depth)
+        else:
+            new_arg = arg
 
-            bound[arg.expr] = bound.get(arg.expr, []) + [new_arg.expr]
-            arg.expr = new_arg.expr
+        bound[arg.expr] = bound.get(arg.expr, []) + [new_arg.expr]
+        arg.expr = new_arg.expr
 
-        used[arg.expr] = False
-
-        body.alpha_convert(used, bound)
+        body.alpha_convert(used, bound, current_depth)
         self.nodes = [arg, body]
 
-        used[arg.expr] = True
-
-        if to_remove:
-            bound[to_remove].pop()
-            if not bound[to_remove]:
-                del bound[to_remove]
+        bound[to_remove].pop()
+        if not bound[to_remove]:
+            del bound[to_remove]
 
         self.update_expr()
 
@@ -508,10 +505,10 @@ class Application(LambdaTerm):
             LambdaTerm.generate_tree(self.expr[start_right_child:], self.original_expr)
         ]
 
-    def alpha_convert(self, used, bound):
+    def alpha_convert(self, used, bound, current_depth=0):
         left, right = self.nodes
-        left.alpha_convert(used, bound)
-        right.alpha_convert(used, bound)
+        left.alpha_convert(used, bound, current_depth + 1)
+        right.alpha_convert(used, bound, current_depth + 1)
 
         self.update_expr()
 

@@ -64,10 +64,8 @@ class Session:
         """Adds Grammar object to the current session. Beta-reduction is lazy and is delayed until run is called."""
         self.error_handler.register_line(self.path, expr, line_num)  # in case error is raised
 
-        print(expr)
         for stmt in self.defines:
             expr = stmt.replace(expr)
-        print(expr)
         stmt = Grammar.infer(expr)
 
         if isinstance(stmt, ImportStmt):
