@@ -1,0 +1,9 @@
+-- Recursive factorial calculation in lambda calculus.
+
+#import "common"
+
+FACT := Y (λf.λn.IF (ISZERO n) 1 (* n (f (- n 1))))
+
+-- Test FACT
+FACT 1  -- => 2
+FACT 4  -- => 24

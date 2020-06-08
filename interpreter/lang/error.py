@@ -52,7 +52,7 @@ class ErrorHandler:
         self.throw(GenericException(*args, **kwargs), warning=True)
 
     def throw(self, error, warning=False):
-        """Throws error or warning using templated and self.traceback. templated must be a GenericException, and
+        """Throws error or warning using error and self.traceback. error must be a GenericException, and
         self.traceback must be a dictionary of file: line_num representing origination of error.
         """
         color = "magenta" if warning else "red"
