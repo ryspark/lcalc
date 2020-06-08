@@ -12,5 +12,8 @@ ISZERO := λx.x FALSE NOT FALSE
 >=     := λx.λy.ISZERO (x (λn.λf.λx.n (λg.λh.h (g f)) (λu.x) (λu.u)) y)
 =      := λx.λy.AND (>= x y) (>= y x)
 !=     := λx.λy.NOT (= x y)
+>      := λx.λy.AND (!= x y) (>= x y)
+<=     := λx.λy.NOT (> x y)
+<      := λx.λy.AND (!= x y) (<= x y)
 
 IF     := λx.λy.λz.x y z
