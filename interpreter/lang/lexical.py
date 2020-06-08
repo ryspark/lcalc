@@ -6,11 +6,14 @@ All grammar can be loosely defined as follows:
 ```
 <import_stmt> ::= "#import " <filepath>     ; imports relative to this .lc file ("common" denotes common/*.lc)
 <define_stmt> ::= "#define " <char> <char>  ; blindly replaces instances of first <char> with second <char>
+                                            ; note that there are a few special cases for the second <char>:
+                                            ;  1. <lambda> will replace all λ with first <char>
+                                            ;  2. <declare> will replace all := with first <char>
 
-<named_func> ::= <var> ":=" <λ-term>        ; only reduced if used later on
-<exec_stmt> ::= <λ-term>                    ; will be outputted when interpreter is run
+<named_func>  ::= <var> ":=" <λ-term>       ; only reduced if used later on
+<exec_stmt>   ::= <λ-term>                  ; will be outputted when interpreter is run
 
-<comment> ::= "--" <char>*
+<comment>     ::= "--" <char>*
 ```
 
 Comments are handled in session.py: there is no dedicated Grammar class for comments.
@@ -30,7 +33,6 @@ PureGrammar.illegal.append("\"")   # character that surrounds filepath in import
 PureGrammar.illegal.append(":=")   # characters for declaring a named func/define statements
 
 PureGrammar.illegal.append("<lambda>")   # '#define' representation for lambda (λ) character
-PureGrammar.illegal.append("<hash>")     # '#define' representation for hash (#) character
 PureGrammar.illegal.append("<declare>")  # '#define' representation for declare (:=) character
 
 
@@ -118,7 +120,7 @@ class ImportStmt(Grammar):
 
 class DefineStmt(Grammar):
     """Define statement in lc. See docstrings for grammar."""
-    ALIASES = {"<lambda>": "λ", "<declare>": ":=", "<hash>": "#"}
+    ALIASES = {"<lambda>": "λ", "<declare>": ":="}
 
     def __init__(self, expr, original_expr):
         super().__init__(expr, original_expr)
