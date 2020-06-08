@@ -6,7 +6,7 @@ Source: https://en.wikipedia.org/wiki/Church_encoding#Calculation_with_Church_nu
 """
 
 from lang.error import GenericException
-from pure.lexical import Abstraction, Variable
+from pure.lexical import Abstraction, Application, Variable
 
 
 def cnumber(num):
@@ -28,17 +28,23 @@ def cnumber(num):
 def number(cnum):
     """Returns str(number) given LambdaTerm cnum. If cnum isn't a Church numeral, returns None."""
     try:
+        assert isinstance(cnum, Abstraction)
         first_arg, first_body = cnum.nodes
+
+        assert isinstance(first_body, Abstraction)
         second_arg, nth_body = first_body.nodes
-    except ValueError:
+    except (AssertionError, ValueError):
         return None
 
     num = 0
     while nth_body.tokenizable:
-        var, nth_body = nth_body.nodes
+        if not isinstance(nth_body, Application):
+            return None
 
+        var, nth_body = nth_body.nodes
         if var.tokenizable or not var == first_arg:
             return None
+
         num += 1
 
     return str(num) if nth_body == second_arg else None
