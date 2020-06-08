@@ -32,7 +32,7 @@ means that function application must be separated by spaces or parentheses.
 from abc import abstractmethod, ABC
 from copy import deepcopy
 
-from lang.error import GenericException, warn
+from lang.error import GenericException
 
 
 class PureGrammar(ABC):
@@ -194,13 +194,13 @@ class LambdaTerm(PureGrammar):
 
     @property
     def flattened(self):
-        """Gets dict with keys being the Variables in self and the values being the paths to those Variables."""
+        """Gets dict with keys being the Variable exprs in self and the values being the paths to those Variables."""
         def get_flattened(node, path, flattened):
             if not node.tokenizable:
-                if node in flattened:
-                    flattened[node].append(path)
+                if node.expr in flattened:
+                    flattened[node.expr].append(path)
                 else:
-                    flattened[node] = [path]
+                    flattened[node.expr] = [path]
             else:
                 for idx, sub_node in enumerate(node.nodes):
                     get_flattened(sub_node, path + [idx], flattened)
@@ -261,10 +261,6 @@ class LambdaTerm(PureGrammar):
 
     def __str__(self):
         return self.display()
-
-    def __hash__(self):
-        """Needed for _flattened dict, where Variables are keys."""
-        return hash(self.expr)
 
 
 class Variable(LambdaTerm):
@@ -551,8 +547,9 @@ class Application(LambdaTerm):
 
 class NormalOrderReducer:
     """Implements normal-order beta reduction of a syntax tree. Used instead of LambdaTerm in lang."""
+    RECURSION_LIMIT = 100
 
-    def __init__(self, expr, original_expr=None, reduce=False):
+    def __init__(self, expr, original_expr=None):
         self.original_expr = original_expr if original_expr else expr
         self.tree = LambdaTerm.generate_tree(expr, self.original_expr)
 
@@ -561,28 +558,26 @@ class NormalOrderReducer:
 
         self.reduced = False
 
-        if reduce:
-            self.beta_reduce()
-
-    def beta_reduce(self):
-        """In-place normal-order beta reduction of self.tree."""
+    def beta_reduce(self, error_handler):
+        """In-place normal-order beta reduction of self.tree. error_handler is the current session's error handler."""
         self.tree.alpha_convert(self.used, self.bound)
 
-        previous_lens = []
+        diffs = []
         redex, redex_path = self.tree.left_outer_redex()
 
         while redex_path is not None:
             abstraction, new_term = redex.nodes
             arg, body = abstraction.nodes
 
+            prev_len = len(self.tree.expr)
             self.set(redex_path, body.sub(arg, new_term))
 
-            previous_lens.append(len(self.tree.expr))
+            diffs.append(len(self.tree.expr) - prev_len)
             redex, redex_path = self.tree.left_outer_redex()
 
-            if len(previous_lens) >= 2:
-                if all(previous_lens[idx] < previous_lens[idx + 1] for idx in range(len(previous_lens) - 1)):
-                    warn("{} does not have a beta-normal form", self.original_expr)
+            if len(diffs) >= NormalOrderReducer.RECURSION_LIMIT and not any(diff < 0 for diff in diffs):
+                error_handler.warn("{} does not have a beta-normal form", self.original_expr)
+                break
 
         self.tree.expr = PureGrammar.preprocess(self.tree.expr)
         self.reduced = True
@@ -597,10 +592,6 @@ class NormalOrderReducer:
         except ValueError:
             self.tree = node
             self.tree.update_expr()
-
-    @property
-    def flattened(self):
-        return self.tree.flattened
 
     def __repr__(self):
         return repr(self.tree)

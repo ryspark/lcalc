@@ -46,10 +46,10 @@ def number(cnum):
 
 def cnumberify(nor):
     """In-place replacement all numbers in NormalOrderReducer with cnumbers."""
-    for node, paths in nor.flattened.items():
-        if node.expr.isdigit():
+    for node_expr, paths in nor.tree.flattened.items():
+        if node_expr.isdigit():
             for path in paths:
-                nor.set(path, cnumber(node.expr))
+                nor.set(path, cnumber(node_expr))
 
 
 def numberify(nor):

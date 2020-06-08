@@ -169,7 +169,7 @@ class NamedFunc(Grammar):
         self.term = NormalOrderReducer(term)
         cnumberify(self.term)
 
-        if self.name in self.term.flattened:
+        if self.name.expr in self.flattened:
             raise GenericException("recursive definitions not supported", self.term)
 
     @staticmethod
@@ -202,25 +202,20 @@ class NamedFunc(Grammar):
 
         return True
 
-    def sub(self, func_obj, precalc_path=None):
-        """Substitutes all occurences of self.name in tree for self.replace. tree must be a FuncObj. If precalc_path is
-        specified, sub will simply call func_obj.term.set(precalc_path, self.term.term.tree).
+    def sub_all(self, fn_stmt, paths, namespace):
+        """Substitutes self.term (also recursively substituted here) for all paths in paths. namespace is the dict of
+        name.expr: NamedStmts that is used to substitute self.term.
         """
-        if not self.term.reduced:
-            self.term.beta_reduce()
+        for node_expr, secondary_paths in self.flattened.items():  # substitute NamedStmts within self.term
+            if node_expr in namespace:
+                namespace[node_expr].sub_all(self, secondary_paths, namespace)
 
-        if precalc_path is not None:
-            func_obj.term.set(precalc_path, self.term.tree)
-        else:
-            for node, paths in func_obj.term.flattened.items():
-                if node == self.name:
-                    for path in paths:
-                        func_obj.term.set(path, deepcopy(self.term.tree))
+        for path in paths:
+            fn_stmt.term.set(path, deepcopy(self.term.tree))
 
-    def sub_all(self, to_exec):
-        """In-place beta-reduction and substitution of elements of to_exec."""
-        for stmt in to_exec:
-            self.sub(stmt)
+    @property
+    def flattened(self):
+        return self.term.tree.flattened
 
     def __repr__(self):
         return f"{self._cls}(name={repr(self.name)}, replace={repr(self.term)})"
@@ -240,8 +235,12 @@ class ExecStmt(Grammar):
     def check_grammar(expr, original_expr):
         return LambdaTerm.infer_type(expr, original_expr) is not None
 
-    def execute(self):
+    def execute(self, error_handler):
         """Running an ExecStmt is equivalent to beta-reducing its term."""
-        self.term.beta_reduce()
+        self.term.beta_reduce(error_handler)
         numberify(self.term)
         return self.term
+
+    @property
+    def flattened(self):
+        return self.term.tree.flattened

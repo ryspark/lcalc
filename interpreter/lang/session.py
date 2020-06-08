@@ -20,11 +20,8 @@ class Session:
         self.cmd_line = cmd_line        # whether or not in command-line mode
 
         self.defines = []    # list of define directives
-        self.scope = []      # list of NamedFuncs that exist in the current session that have not been expanded
-        self.memory = []     # list of NamedFuncs that exist in the current session that have been expanded
+        self.namespace = {}  # dict of name.expr: NamedFuncs that exist in the current session
         self.to_exec = {}    # dict of line num: ExecStmts to execute
-
-        self.flattened = []  # flattened list of all ExecStmt nodes in the current session
         self.results = []    # results after running ExecStmts
 
         if self.cmd_line:
@@ -67,24 +64,27 @@ class Session:
         """Adds Grammar object to the current session. Beta-reduction is lazy and is delayed until run is called."""
         self.error_handler.register_line(self.path, expr, line_num)  # in case error is raised
 
+        print(expr)
         for stmt in self.defines:
             expr = stmt.replace(expr)
+        print(expr)
         stmt = Grammar.infer(expr)
 
         if isinstance(stmt, ImportStmt):
             for path in self._get_paths(stmt.path):
-                self.scope = Session(self.error_handler, path, self.common_path, self.cmd_line).scope + self.scope
+                loaded_module = Session(self.error_handler, path, self.common_path, self.cmd_line)
+                self.namespace = {**loaded_module.namespace, **self.namespace}
                 # on import, ExecStmts from the imported module will not be run
+                # local namespace also takes precedence over the loaded module's namespace
 
         elif isinstance(stmt, DefineStmt):
             self.defines.append(stmt)
 
         elif isinstance(stmt, NamedFunc):
-            self.scope.append(stmt)
+            self.namespace[stmt.name.expr] = stmt
 
         elif isinstance(stmt, ExecStmt):
             self.to_exec[line_num] = stmt
-            self.flattened.extend(stmt.term.tree.flattened.keys())
 
         self.error_handler.remove_line(self.path)  # error was not raised
 
@@ -92,18 +92,20 @@ class Session:
         """Runs this session's executable statements by expanding them and then beta-reducing them. Will raise any
         errors that are encountered.
         """
-        self._expand_scope()   # expand NamedFuncs in scope if new NamedFuncs have been added
+        for line_num, exec_stmt in list(self.to_exec.items()):  # run ExecStmts
+            self.error_handler.register_line(self.path, str(exec_stmt), line_num)
 
-        for stmt in self.memory:    # reduce/sub iff stmt is used in ExecStmts
-            if stmt.name in self.flattened:
-                stmt.sub_all(self.to_exec.values())
+            for node_expr, paths in exec_stmt.flattened.items():  # substitue NamedStmts if used
+                if node_expr in self.namespace:
+                    self.namespace[node_expr].sub_all(exec_stmt, paths, self.namespace)
 
-        for line_num, stmt in list(self.to_exec.items()):  # run ExecStmts
             if self.cmd_line:
-                self.results = [stmt.execute()]
+                self.results = [exec_stmt.execute(self.error_handler)]
                 del self.to_exec[line_num]
             else:
-                self.results.append(stmt.execute())
+                self.results.append(exec_stmt.execute(self.error_handler))
+
+            self.error_handler.remove_line(self.path)
 
     def pop(self):
         """Returns and removes last result. Used in command-line mode."""
@@ -114,22 +116,3 @@ class Session:
         if path == "common":
             return [os.path.abspath(f"{self.common_path}/{file}") for file in os.listdir(self.common_path)]
         return [os.path.abspath(path)]
-
-    def _expand_scope(self):
-        """Expands any NamedFuncs within self.scope and moves them to self.memory."""
-        funcs, seen, move = {func.name: func for func in self.scope}, [], []
-        for idx, func in enumerate(self.scope):
-            for node, paths in func.term.flattened.items():
-                if node in funcs and node not in seen:
-                    raise GenericException("'{}' used prior to definition", node)
-                elif node in funcs:
-                    for path in paths:
-                        funcs[node].sub(func, path)
-
-            self.memory.append(func)
-            move.append(idx)
-
-            seen.append(func.name)
-
-        for num, idx in enumerate(move):  # can't modify self.scope during iteration, so do it here
-            del self.scope[idx - num]
