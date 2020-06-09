@@ -4,11 +4,3 @@
 # Pycharm files
 .idea/
 .DS_STORE
-
-# Tests
-tests
-
-# Compiled cython files
-build
-*.c
-*.so
