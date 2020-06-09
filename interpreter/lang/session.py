@@ -103,7 +103,7 @@ class Session:
                     self.namespace[node_expr].sub_all(exec_stmt, paths, self.namespace)
 
             try:
-                print(exec_stmt.execute(self.error_handler).tree.expr)
+                print(exec_stmt.execute(self.error_handler))
             finally:
                 if self.cmd_line:
                     del self.to_exec[line_num]

@@ -52,7 +52,7 @@ class PureGrammar(ABC):
     @staticmethod
     @abstractmethod
     def check_grammar(expr, original_expr, preprocess=True):
-        """"This method should check expr's top-level grammar and return whether or not it is valid. It should also
+        """This method should check expr's top-level grammar and return whether or not it is valid. It should also
         raise a SyntaxError if expr's top-level grammar is similar to the accepted grammar but syntactically invalid.
         """
 
@@ -76,7 +76,8 @@ class PureGrammar(ABC):
             original_expr = pre_expr
 
         if not pre_expr:
-            raise GenericException("λ-term cannot be empty", original_expr)
+            start = original_expr.index(pre_expr)
+            raise GenericException("λ-term cannot be empty", original_expr, start=start, end=start + len(pre_expr))
 
         for char in PureGrammar.illegal:
             if char in pre_expr:
@@ -168,7 +169,7 @@ class LambdaTerm(PureGrammar):
         As with alpha_convert, this method is used in beta_reduce as a helper. Should call update_expr. Note that
         though this method does not perform a deep copy of self before returning, so the substituted and original nodes
         reference the same objects. However, beta_reduce in NormalOrderReducer should handle this properly and eliminate
-        multiple references. subscript cache is used for keeping track of used subscripts.
+        multiple references.
         """
 
     @abstractmethod
@@ -182,10 +183,7 @@ class LambdaTerm(PureGrammar):
     @property
     @abstractmethod
     def tokenizable(self):
-        """Whether or not this object is tokenizable. Could make everything work without this method, but felt that it
-        was more explicit (and therefore worth the few extra lines of code) to have a node.tokenizable check in
-        LambdaAST.generate_tree.
-        """
+        """Whether or not this object is tokenizable."""
 
     @property
     @abstractmethod
@@ -211,9 +209,7 @@ class LambdaTerm(PureGrammar):
 
     @classmethod
     def generate_tree(cls, expr, original_expr=None, preprocess=True):
-        """Converts expr to the proper LambdaTerm type, raises SyntaxError if expr is not a valid LambdaType.
-        original_expr is used for displaying error messages.
-        """
+        """Converts expr to the proper LambdaTerm type, raises SyntaxError if expr is not a valid LambdaType."""
         for subclass_name in cls.__subclasses__():
             subclass = globals()[subclass_name.__name__]
             if subclass.check_grammar(expr, original_expr, preprocess):

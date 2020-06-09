@@ -51,6 +51,7 @@ class ErrorHandler:
 
     @staticmethod
     def diagnose(error, warning=False):
+        """Returns offending part of error.expr highlighted and bolded."""
         color = ErrorHandler.WARNING if warning else ErrorHandler.ERROR
 
         diagnosis = "  " + error.expr[:error.start]

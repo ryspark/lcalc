@@ -51,7 +51,7 @@ class Grammar(ABC):
     @staticmethod
     @abstractmethod
     def check_grammar(expr, original_expr):
-        """"This method should check expr's top-level grammar and return whether or not it is valid. It should also
+        """This method should check expr's top-level grammar and return whether or not it is valid. It should also
         raise a SyntaxError if expr's top-level grammar is similar to the accepted grammar but syntactically invalid.
         original_expr is used for error messages.
         """
@@ -64,8 +64,7 @@ class Grammar(ABC):
     @classmethod
     def infer(cls, expr, original_expr=None):
         """Similar to LambdaTerm's generate_tree, this method infers the type of expr and returns an object of the
-        correct grammar subclass. No *args, **kwargs support because any args besides expr are handled internally and
-        should not be used.
+        correct grammar subclass.
         """
         if original_expr is None:
             original_expr = expr
@@ -160,6 +159,7 @@ class DefineStmt(Grammar):
 
 
 class NamedFunc(Grammar):
+    """NamedFuncs represent binding statements in lc: <NAME> := <λ-term>."""
 
     def __init__(self, expr, original_expr):
         super().__init__(expr, original_expr)
@@ -217,6 +217,7 @@ class NamedFunc(Grammar):
 
     @property
     def flattened(self):
+        """Flattened Variables. Used for substitution in Session."""
         return self.term.tree.flattened
 
     def __repr__(self):
@@ -241,8 +242,9 @@ class ExecStmt(Grammar):
         """Running an ExecStmt is equivalent to beta-reducing its term."""
         self.term.beta_reduce(error_handler)
         numberify(self.term)
-        return self.term
+        return self.term.tree.expr
 
     @property
     def flattened(self):
+        """Flattened Variables. Used for substitution in Session."""
         return self.term.tree.flattened
