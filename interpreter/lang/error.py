@@ -113,10 +113,12 @@ class ErrorHandler:
         do_exit = False
         if exc_type is KeyboardInterrupt:
             self.throw(GenericException("keyboard interrupt"))
-        elif exc_type is GenericException:
-            self.throw(exc_val)
+        elif exc_type is SystemExit:
+            do_exit = True
         elif exc_type is RecursionError:
             self.throw(GenericException("beta normal form exists, but maximum recursion depth exceeded"))
+        elif exc_type is GenericException:
+            self.throw(exc_val)
         elif exc_type is not None:
             print_tb(exc_tb)
             self.throw(GenericException(f"unknown error: '{exc_type.__name__}: {exc_val}'", internal=True))

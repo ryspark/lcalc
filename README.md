@@ -1,7 +1,7 @@
 # lambda-calculus
 
 Lambda calculus interpreter written in Python, supporting both a file interpreter and a command-line interpreter. 
-Supports pure lambda calculus as imagined by Church, but also named functions (`I: λx.x`), `#import`ing of other 
+Supports pure lambda calculus as imagined by Church, but also named functions (`I := λx.x`), `#import`ing of other 
 modules, and `#define` directives.
 
 Below is an example program to compute the sum of 50 and 50.
@@ -52,3 +52,16 @@ calculus `#import`ed from another module.
 (**) If length of first `<char>` is greater than one, an extra space is inserted (e.g., `#define lambda <lambda>` tells the
 interpreter to replace `lambda x.x` with `λx.x`, rather than replacing `lambdax.x`). Other than this special case, 
 both the first and second `<char>`s cannot contain whitespace.
+
+### Usage
+
+To install, just add a sym-link from `interpreter/lc` to `/usr/local/bin/lc`.
+
+#### Command-line mode
+
+Run `lc` without any arguments to enter interactive interpreter mode.
+
+#### File interpreter mode
+
+Run `lc <filename>.lc` to interpreter and execute a `.lc` file. Note that evaluation (i.e., beta reduction) is lazy, and
+all statements that are not `#import`s, `#define`s, or bindings (`NAME := <λ-term>`) will be executed.
