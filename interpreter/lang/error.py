@@ -3,7 +3,6 @@ is raised and makes it all the way to ErrorHandler, it is assumed to be an inter
 """
 
 import sys
-from traceback import print_tb
 
 from termcolor import colored
 
@@ -117,11 +116,10 @@ class ErrorHandler:
         elif exc_type is SystemExit:
             do_exit = True
         elif exc_type is RecursionError:
-            self.throw(GenericException("beta normal form exists, but maximum recursion depth exceeded"))
+            self.throw(GenericException("beta normal form might exist, but maximum recursion depth exceeded"))
         elif exc_type is GenericException:
             self.throw(exc_val)
         elif exc_type is not None:
-            print_tb(exc_tb)
             self.throw(GenericException(f"unknown error: '{exc_type.__name__}: {exc_val}'", internal=True))
             do_exit = True
 
