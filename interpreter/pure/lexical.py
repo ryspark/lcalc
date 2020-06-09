@@ -81,8 +81,7 @@ class PureGrammar(ABC):
             original_expr = pre_expr
 
         if not pre_expr:
-            start = original_expr.index(pre_expr)
-            raise GenericException("λ-term cannot be empty", original_expr, start=start, end=start + len(pre_expr))
+            raise GenericException("λ-term cannot be empty", original_expr)
 
         for char in PureGrammar.illegal:
             if char in pre_expr:

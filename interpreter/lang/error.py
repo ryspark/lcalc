@@ -56,11 +56,12 @@ class ErrorHandler:
 
         diagnosis = "  " + error.expr[:error.start]
 
-        diagnosis += colored(error.expr[error.start:error.end], color, attrs=["bold"])
-        diagnosis += error.expr[error.end:] + "\n"
+        end = max(error.end, 1)
+        diagnosis += colored(error.expr[error.start:end], color, attrs=["bold"])
+        diagnosis += error.expr[end:] + "\n"
 
         diagnosis += "  " + " " * error.start
-        diagnosis += colored("^" + "~" * (error.end - error.start - 1), color, attrs=["bold"])
+        diagnosis += colored("^" + "~" * (end - error.start - 1), color, attrs=["bold"])
 
         return diagnosis
 
