@@ -9,3 +9,8 @@ PRED  := λn.λf.λx.n (λg.λh.h (g f)) (λu.x) (λu.u)
 -     := λm.λn.n PRED m
 *     := λm.λn.λf.m (n f)
 **    := λm.λn.n m
+
+/     := λn.((λf.(λx.x x) (λx.f (x x)))
+         (λc.λn.λm.λf.λx.(
+             λd.(λn.n (λx.(λa.λb.b)) (λa.λb.a)) d ((λf.λx.x) f x) (f (c d m f x)))
+             (- n m))) (SUCC n)

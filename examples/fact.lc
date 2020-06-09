@@ -3,10 +3,10 @@
 #import "common"
 
 ;; define FACT
-FACT := Y (λfact.(λn.(
-    (IF (ISZERO n)                ;; if n == 0:
-        1                         ;;    return 1
-        (* n (fact (- n 1)))))))  ;; return n * fact(n - 1)
+FACT := Y λfact.λn.(
+        (IF (ISZERO n)              ;; if n == 0:
+            1                       ;;    return 1
+            (* n (fact (- n 1)))))  ;; return n * fact(n - 1)
 
 ;; test FACT
 FACT 1  ;; => 1
