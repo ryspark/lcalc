@@ -12,5 +12,5 @@ PRED  := λn.λf.λx.n (λg.λh.h (g f)) (λu.x) (λu.u)
 
 /     := λn.((λf.(λx.x x) (λx.f (x x)))
          (λc.λn.λm.λf.λx.(
-             λd.(λn.n (λx.(λa.λb.b)) (λa.λb.a)) d ((λf.λx.x) f x) (f (c d m f x)))
+             λd.(λn.n (λx.0) (λa.λb.a)) d (0 f x) (f (c d m f x)))
              (- n m))) (SUCC n)
