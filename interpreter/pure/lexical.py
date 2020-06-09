@@ -625,9 +625,10 @@ class NormalOrderReducer:
             diffs.append(len(self.tree.expr) - prev_len)
             redex, redex_path = self.tree.left_outer_redex()
 
-            if len(diffs) >= NormalOrderReducer.RECURSION_LIMIT and not any(diff < 0 for diff in diffs):
-                error_handler.warn("{} does not have a beta-normal form", self.original_expr)
-                break
+            if len(diffs) > NormalOrderReducer.RECURSION_LIMIT:
+                if not any(diff < 0 for diff in diffs[NormalOrderReducer.RECURSION_LIMIT:]):
+                    error_handler.warn("{} does not have a beta-normal form", self.original_expr)
+                    break
 
         self.tree.expr = PureGrammar.preprocess(self.tree.expr)
         self.reduced = True
