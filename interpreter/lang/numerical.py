@@ -52,7 +52,7 @@ def number(cnum):
 
 def cnumberify(nor):
     """In-place replacement all numbers in NormalOrderReducer with cnumbers."""
-    for node_expr, paths in nor.tree.flattened.items():
+    for node_expr, (__, paths) in nor.flattened().items():
         if node_expr.isdigit():
             for path in paths:
                 nor.set(path, cnumber(node_expr))

@@ -56,6 +56,11 @@ class PureGrammar(ABC):
         raise a SyntaxError if expr's top-level grammar is similar to the accepted grammar but syntactically invalid.
         """
 
+    @property
+    @abstractmethod
+    def tokenizable(self):
+        """Whether or not this object is tokenizable."""
+
     @staticmethod
     def are_parens_balanced(expr):
         """Checks if parenthese are balanced within expr."""
@@ -133,6 +138,10 @@ class Builtin(PureGrammar):
                     raise GenericException("'{}' has stray builtin '{}'", (original_expr, char), start=idx, end=idx + 1)
         return False
 
+    @property
+    def tokenizable(self):
+        return False
+
 
 class LambdaTerm(PureGrammar):
     """Represents a valid λ-term: variable, abstraction, or application. Also abstractly defines functionality that
@@ -146,7 +155,6 @@ class LambdaTerm(PureGrammar):
         self._flattened = {}
 
         self.tokenize()
-        self.generate_bound()
 
     @abstractmethod
     def tokenize(self):
@@ -173,38 +181,37 @@ class LambdaTerm(PureGrammar):
         """
 
     @abstractmethod
-    def generate_bound(self):
-        """Generates bound variable list and sets self.bound attr. Assumes tokenize has been called."""
-
-    @abstractmethod
     def update_expr(self):
         """Updates self.expr from self.nodes. Used during alpha_convert."""
 
-    @property
     @abstractmethod
-    def tokenizable(self):
-        """Whether or not this object is tokenizable."""
+    def alpha_equals(self, other, mapping=None):
+        """Whether or not two LambdaTerms are alpha-equivalent. mapping represents map between self vars and other vars
+        that are alpha-equivalent to their corresponding key entry. other_mapping is similar to mapping but from
+        perspective of other.
+        """
 
     @property
     @abstractmethod
     def is_leftmost(self):
         """Whether or not this object is a leftmost node in a syntax tree. Only works if tokenize has been run."""
 
-    @property
-    def flattened(self):
-        """Gets dict with keys being the Variable exprs in self and the values being the paths to those Variables."""
-        def get_flattened(node, path, flattened):
+    def flattened(self, recompute=False):
+        """Gets dict with keys being the sub node exprs in self and the values being a tuple of (node, paths to those
+        sub nodes).
+        """
+        dummy = (None, [])
+
+        def generate_flattened(node, path, flattened):
             if not node.tokenizable:
-                if node.expr in flattened:
-                    flattened[node.expr].append(path)
-                else:
-                    flattened[node.expr] = [path]
+                flattened[node.expr] = (node, flattened.get(node.expr, dummy)[-1] + [path])
             else:
                 for idx, sub_node in enumerate(node.nodes):
-                    get_flattened(sub_node, path + [idx], flattened)
+                    flattened[sub_node.expr] = (sub_node, flattened.get(sub_node.expr, dummy)[-1] + [path + [idx]])
+                    generate_flattened(sub_node, path + [idx], flattened)
 
-        if not self._flattened:
-            get_flattened(self, [], self._flattened)
+        if not self._flattened or recompute:
+            generate_flattened(self, [], self._flattened)
         return self._flattened
 
     @classmethod
@@ -295,6 +302,25 @@ class Variable(LambdaTerm):
 
     def update_expr(self):
         """Variables have no nodes, so do nothing."""
+
+    def alpha_equals(self, other, mapping=None, other_mapping=None):
+        if mapping is None:
+            mapping = {}
+        if other_mapping is None:
+            other_mapping = {}
+
+        if not isinstance(other, type(self)):
+            return False
+
+        if self.expr in mapping:
+            return mapping[self.expr][-1] == other.expr
+        elif other.expr in other_mapping:
+            return other_mapping[other.expr][-1] == self.expr
+
+        mapping[self.expr] = [other.expr]
+        other_mapping[other.expr] = [self.expr]
+
+        return True
 
     @property
     def tokenizable(self):
@@ -434,6 +460,23 @@ class Abstraction(LambdaTerm):
         else:
             self.expr += f"{body.expr}"
 
+    def alpha_equals(self, other, mapping=None, other_mapping=None):
+        if mapping is None:
+            mapping = {}
+        if other_mapping is None:
+            other_mapping = {}
+
+        if not isinstance(other, type(self)):
+            return False
+
+        arg, body = self.nodes
+        other_arg, other_body = other.nodes
+
+        mapping[arg.expr] = mapping.get(arg.expr, []) + [other_arg.expr]
+        other_mapping[other_arg.expr] = other_mapping.get(other_arg.expr, []) + [arg.expr]
+
+        return body.alpha_equals(other_body, mapping, other_mapping)
+
     @property
     def tokenizable(self):
         return True
@@ -526,6 +569,20 @@ class Application(LambdaTerm):
                 self.expr += f"({node.expr}) "
         self.expr = self.expr.rstrip()
 
+    def alpha_equals(self, other, mapping=None, other_mapping=None):
+        if mapping is None:
+            mapping = {}
+        if other_mapping is None:
+            other_mapping = {}
+
+        if not isinstance(other, type(self)):
+            return False
+
+        for node, other_node in zip(self.nodes, other.nodes):
+            if not node.alpha_equals(other_node, mapping, other_mapping):
+                return False
+        return True
+
     @property
     def tokenizable(self):
         return True
@@ -550,6 +607,7 @@ class NormalOrderReducer:
         self.bound = {}
 
         self.reduced = False
+        self._flattened = {}
 
     def beta_reduce(self, error_handler):
         """In-place normal-order beta reduction of self.tree. error_handler is the current session's error handler."""
@@ -585,6 +643,13 @@ class NormalOrderReducer:
         except ValueError:
             self.tree = node
             self.tree.update_expr()
+
+    def flattened(self, recompute=False):
+        """Returns self.tree.flattened, plus top-level expr."""
+        if not self._flattened or recompute:
+            self._flattened = self.tree.flattened()
+            self._flattened[self.tree.expr] = (self.tree, [[]])
+        return self._flattened
 
     def __repr__(self):
         return repr(self.tree)

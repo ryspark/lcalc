@@ -171,7 +171,7 @@ class NamedFunc(Grammar):
         self.term = NormalOrderReducer(term)
         cnumberify(self.term)
 
-        if self.name.expr in self.flattened:
+        if self.name.expr in self.flattened():
             raise GenericException("recursive definitions not supported", self.term)
 
     @staticmethod
@@ -208,17 +208,24 @@ class NamedFunc(Grammar):
         """Substitutes self.term (also recursively substituted here) for all paths in paths. namespace is the dict of
         name.expr: NamedStmts that is used to substitute self.term.
         """
-        for node_expr, secondary_paths in self.flattened.items():  # substitute NamedStmts within self.term
+        for node_expr, (__, secondary_paths) in self.flattened().items():  # substitute NamedStmts within self.term
             if node_expr in namespace:
                 namespace[node_expr].sub_all(self, secondary_paths, namespace)
 
         for path in paths:
             fn_stmt.term.set(path, deepcopy(self.term.tree))
 
+    def rsub(self, term):
+        """Reverse-substitutes any occurence of self.term in term for self.name."""
+        for node_expr, (node, paths) in term.flattened().items():
+            if self.term.tree.alpha_equals(node):
+                for path in paths:
+                    term.set(path, deepcopy(self.name))
+
     @property
     def flattened(self):
         """Flattened Variables. Used for substitution in Session."""
-        return self.term.tree.flattened
+        return self.term.flattened
 
     def __repr__(self):
         return f"{self._cls}(name={repr(self.name)}, replace={repr(self.term)})"
@@ -238,13 +245,22 @@ class ExecStmt(Grammar):
     def check_grammar(expr, original_expr):
         return LambdaTerm.infer_type(expr, original_expr) is not None
 
-    def execute(self, error_handler):
-        """Running an ExecStmt is equivalent to beta-reducing its term."""
+    def execute(self, error_handler, sub, namespace=None):
+        """Running an ExecStmt is equivalent to beta-reducing its term. If sub, this method will reverse substitutes
+        names of NamedStmts back into self.term after reducing it.
+        """
         self.term.beta_reduce(error_handler)
         numberify(self.term)
+
+        if sub and namespace:
+            self.term.flattened(recompute=True)  # need to update flattened after beta reduction
+            for named_stmt in namespace.values():
+                named_stmt.rsub(self.term)
+
         return self.term.tree.expr
 
-    @property
     def flattened(self):
-        """Flattened Variables. Used for substitution in Session."""
-        return self.term.tree.flattened
+        """Flattened Variables. Used for substitution in Session. Not a @property for consistency with
+        NormalOrderReducer and LambdaTerm.
+        """
+        return self.term.flattened()
