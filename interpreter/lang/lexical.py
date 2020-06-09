@@ -13,7 +13,7 @@ All grammar can be loosely defined as follows:
 <named_func>  ::= <var> ":=" <λ-term>       ; only reduced if used later on
 <exec_stmt>   ::= <λ-term>                  ; will be outputted when interpreter is run
 
-<comment>     ::= "--" <char>*
+<comment>     ::= ";;" <char>*
 ```
 
 Comments are handled in session.py: there is no dedicated Grammar class for comments.
@@ -27,7 +27,7 @@ from lang.numerical import cnumberify, numberify
 from pure.lexical import Application, LambdaTerm, Variable, NormalOrderReducer, PureGrammar
 
 
-PureGrammar.illegal.append("--")   # characters for signifying beginning of comment
+PureGrammar.illegal.append(";;")   # characters for signifying beginning of comment
 PureGrammar.illegal.append("#")    # character for signifying import statement
 PureGrammar.illegal.append("\"")   # character that surrounds filepath in import statement
 PureGrammar.illegal.append(":=")   # characters for declaring a named func/define statements

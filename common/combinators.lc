@@ -1,5 +1,5 @@
--- Some common combinators
--- Source: https://plato.stanford.edu/entries/lambda-calculus/#Com
+;; Some common combinators
+;; Source: https://plato.stanford.edu/entries/lambda-calculus/#Com
 
 S := λx.λy.λz.x z (y z)
 K := λx.λy.x
