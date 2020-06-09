@@ -29,13 +29,17 @@ arithmetic *extremely* slow.
                                         ; - associating by left: abcd = ((((a) b) c) d)
 ```
 
-(*) See [docstrings](interpreter/pure/lexical.py) for details on why currying isn't supported.
+(*) Why is currying not supported? Because it makes the use of multi-character Variables ambiguous. For example, if
+currying is allowed, what does the expression `λvar.x` mean? Should it be resolved to `λv.λa.λr.x`, or is `var` a
+Variable name? Thus, currying and multi-character Variable cannot coexist without causing ambiguity. This
+implementation favors multi-character Variables over currying, a purely arbitrary decision. Relatedly, this feature
+means that function application must be separated by spaces or parentheses.
 
 ### Language extensions
 
 ```
-<import_stmt> ::= "#import " <filepath>     ; imports relative to this .lc file ("common" denotes common/*.lc)
-<define_stmt> ::= "#define " <char> <char>  ; blindly replaces instances of first <char> with second <char> (*)
+<import_stmt> ::= "#import " <filepath>     ; imports relative to this .lc file ("common" -> common/*.lc)
+<define_stmt> ::= "#define " <char> <char>  ; blindly replaces instances of 1st <char> with 2nd <char> (*)
                                             ; note that there are a few special cases for the second <char>:
                                             ;  1. <lambda> will replace all λ with first <char> (**)
                                             ;  2. <declare> will replace all := with first <char>

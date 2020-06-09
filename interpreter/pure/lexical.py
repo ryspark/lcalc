@@ -22,10 +22,10 @@ Sources: https://plato.stanford.edu/entries/lambda-calculus/#Com,
 
 ------------------------------------------------------------------------------------------------------------------------
 
-(*) Why is currying not supported? Because it makes the use of multi-character Variable ambiguous. For example, if
+(*) Why is currying not supported? Because it makes the use of multi-character Variables ambiguous. For example, if
 currying is allowed, what does the expression `λvar.x` mean? Should it be resolved to `λv.λa.λr.x`, or is `var` a
 Variable name? Thus, currying and multi-character Variable cannot coexist without causing ambiguity. This
-implementation favors multi-character LambdaVars over currying, a purely arbitrary decision. Relatedly, this feature
+implementation favors multi-character Variables over currying, a purely arbitrary decision. Relatedly, this feature
 means that function application must be separated by spaces or parentheses.
 """
 
