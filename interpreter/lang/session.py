@@ -23,7 +23,6 @@ class Session:
         self.defines = []    # list of define directives
         self.namespace = {}  # dict of name.expr: NamedFuncs that exist in the current session
         self.to_exec = {}    # dict of line num: ExecStmts to execute
-        self.results = []    # results after running ExecStmts
 
         if self.cmd_line:
             self.error_handler.fatal = False
@@ -51,26 +50,28 @@ class Session:
         track of file's exprs), but add_to_prev will indicate whether a line continuation is necessary. Returns
         updated value of line and add_to_prev. Must be called before calling run.
         """
-        if "--" in line:
-            line = line[:line.index("--")]  # get rid of comments
+        if ";;" in line:
+            line = line[:line.index(";;")]  # get rid of comments
 
         line = Grammar.preprocess(line)
         if exprs is not None:
             if not line.isspace() and line and not add_to_prev:
                 exprs.append((line, line_num))
             elif add_to_prev:
-                prev = exprs.pop()
-                exprs.append((prev + line, line_num, prev))
+                popped = exprs.pop()
+                prev = popped[0] if len(popped) == 2 else popped[-1]
+                line = popped[0] + line
+                exprs.append((line, line_num, prev))
 
         return line, line.count("(") > line.count(")")
 
-    def add(self, expr, line_num):
+    def add(self, expr, line_num, original_expr=None):
         """Adds Grammar object to the current session. Beta-reduction is lazy and is delayed until run is called."""
         self.error_handler.register_line(self.path, expr, line_num)  # in case error is raised
 
         for stmt in self.defines:
             expr = stmt.replace(expr)
-        stmt = Grammar.infer(expr)
+        stmt = Grammar.infer(expr, original_expr)
 
         if isinstance(stmt, ImportStmt):
             for path in self._get_paths(stmt.path):
@@ -101,19 +102,13 @@ class Session:
                 if node_expr in self.namespace:
                     self.namespace[node_expr].sub_all(exec_stmt, paths, self.namespace)
 
-            if self.cmd_line:
-                try:
-                    self.results = [exec_stmt.execute(self.error_handler)]
-                finally:
+            try:
+                print(exec_stmt.execute(self.error_handler).tree.expr)
+            finally:
+                if self.cmd_line:
                     del self.to_exec[line_num]
-            else:
-                self.results.append(exec_stmt.execute(self.error_handler))
 
             self.error_handler.remove_line(self.path)
-
-    def pop(self):
-        """Returns and removes last result. Used in command-line mode."""
-        return self.results.pop().tree.expr
 
     def _get_paths(self, path):
         """Returns [path] if path != 'common' else absolute paths of common lc files."""

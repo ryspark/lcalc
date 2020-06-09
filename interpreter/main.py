@@ -28,8 +28,5 @@ def main():
             sess = Session(error_handler, args.file, COMMON, cmd_line=False)
             sess.run()
 
-            for node in sess.results:
-                print(node.tree.expr)
-
         else:
             Shell(Session(error_handler, Session.SH_FILE, COMMON, cmd_line=True)).cmdloop()

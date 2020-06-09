@@ -31,14 +31,9 @@ class Shell(cmd.Cmd):
                 self._tmp_line = ""
                 self.prompt = self._tmp_prompt
 
-                try:
+                if not line.isspace():
                     self.sess.add(line, self.line_num)
-                except ValueError:
-                    return  # if line is empty, terminate
-
-                self.sess.run()
-                if self.sess.results:
-                    print(self.sess.pop())
+                    self.sess.run()
 
     def do_help(self, arg):
         """Doesn't return docs, but rather a short intro."""

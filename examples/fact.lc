@@ -1,17 +1,14 @@
--- Recursive factorial calculation.
+;; Recursive factorial calculation.
 
 #import "common"
 
-FACT := Y (
-    λfact.λn.(
-        IF (ISZERO n)
-            1
-            (* n (fact (- n 1)))
-    )
-)
+;; define FACT
+FACT := Y (λfact.(λn.(
+    (IF (ISZERO n)                ;; if n == 0:
+        1                         ;;    return 1
+        (* n (fact (- n 1)))))))  ;; return n * fact(n - 1)
 
--- Test FACT
-FACT 1  -- => 1
-FACT 2  -- => 2
-FACT 3  -- => 6
--- FACT 4 runs, but only after about 30 seconds... FACT 5 and above will probably result in recursion error
+;; Test FACT
+FACT 1  ;; => 1
+FACT 2  ;; => 2
+FACT 3  ;; => 6
