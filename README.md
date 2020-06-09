@@ -55,7 +55,7 @@ both the first and second `<char>`s cannot contain whitespace.
 
 ### Usage
 
-To install, just add a sym-link from `interpreter/lc` to `/usr/local/bin/lc`.
+To install, add a symbolic link from `interpreter/lc` to `/usr/local/bin/lc`.
 
 #### Command-line mode
 
@@ -65,3 +65,5 @@ Run `lc` without any arguments to enter interactive interpreter mode.
 
 Run `lc <filename>.lc` to interpreter and execute a `.lc` file. Note that evaluation (i.e., beta reduction) is lazy, and
 all statements that are not `#import`s, `#define`s, or bindings (`NAME := <λ-term>`) will be executed.
+
+See [`examples`](examples) for sample `.lc` programs.
