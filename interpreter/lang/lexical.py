@@ -1,4 +1,4 @@
-"""Lexical analysis for lc language, a shallow wrapper around pure lambda calculus. Note that this module does not
+"""Lexical analysis for lcalc language, a shallow wrapper around pure lambda calculus. Note that this module does not
 provide input file parsing, but rather tokenization of arbitrary string expressions.
 
 All grammar can be loosely defined as follows:
@@ -37,7 +37,7 @@ PureGrammar.illegal.append("<declare>")  # '#define' representation for declare 
 
 
 class Grammar(ABC):
-    """Superclass representing any grammar object in lc language."""
+    """Superclass representing any grammar object in lcalc language."""
 
     def __init__(self, expr, original_expr=None):
         """Assumes check_grammar has been run."""
@@ -73,7 +73,7 @@ class Grammar(ABC):
             subclass = globals()[subclass_name.__name__]
             if subclass.check_grammar(expr, original_expr):
                 return subclass(expr, original_expr)
-        raise GenericException("'{}' is not valid lc grammar", original_expr)
+        raise GenericException("'{}' is not valid lcalc grammar", original_expr)
 
     def __repr__(self):
         return f"{self._cls}('{self.expr}')"
@@ -89,7 +89,7 @@ class Grammar(ABC):
 
 
 class ImportStmt(Grammar):
-    """Import statement in lc. See docstrings for grammar."""
+    """Import statement in lcalc. See docstrings for grammar."""
 
     def __init__(self, expr, original_expr=None):
         super().__init__(expr, original_expr)
@@ -118,7 +118,7 @@ class ImportStmt(Grammar):
 
 
 class DefineStmt(Grammar):
-    """Define statement in lc. See docstrings for grammar."""
+    """#define statement in lcalc. See docstrings for grammar."""
     ALIASES = {"<lambda>": "λ", "<declare>": ":="}
 
     def __init__(self, expr, original_expr):
@@ -159,7 +159,7 @@ class DefineStmt(Grammar):
 
 
 class NamedFunc(Grammar):
-    """NamedFuncs represent binding statements in lc: <NAME> := <λ-term>."""
+    """NamedFuncs represent binding statements in lcalc: <NAME> := <λ-term>."""
 
     def __init__(self, expr, original_expr):
         super().__init__(expr, original_expr)

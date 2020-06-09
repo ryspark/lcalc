@@ -1,5 +1,5 @@
-"""Uses implementation of pure lambda calculus/lc language to interpreter .lc files/run in command-line mode. Also uses
-error handling context manager. Called from lc excutable script.
+"""Uses implementation of pure lambda calculus/lcalc language to interpreter .lc files/run in command-line mode. Also
+uses error handling context manager. Called from lcalc excutable script.
 
 Python version must be >=3.6, because error handling requires that dicts are insertion-ordered.
 """
@@ -14,8 +14,8 @@ from lang.session import Session
 
 
 def main():
-    """Runs lc interpreter. Called from lc executable script."""
-    assert sys.version_info >= (3, 6), "lc cannot be run with python < 3.6"
+    """Runs lcalc interpreter. Called from lcalc executable script."""
+    assert sys.version_info >= (3, 6), "lcalc cannot be run with python < 3.6"
 
     with ErrorHandler() as error_handler:
         parser = argparse.ArgumentParser()

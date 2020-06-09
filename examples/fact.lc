@@ -8,7 +8,7 @@ FACT := Y (λfact.(λn.(
         1                         ;;    return 1
         (* n (fact (- n 1)))))))  ;; return n * fact(n - 1)
 
-;; Test FACT
+;; test FACT
 FACT 1  ;; => 1
 FACT 2  ;; => 2
 FACT 3  ;; => 6

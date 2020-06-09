@@ -1,6 +1,6 @@
 """Pure lambda calculus abstract syntax tree token generator and parser.
 
-The `pure` directory contains pure lambda calculus AST generation and parsing- not sufficient for the lc language.
+The `pure` directory contains pure lambda calculus AST generation and parsing- not sufficient for the lcalc language.
 
 Formally, pure lambda calculus can be defined as
 

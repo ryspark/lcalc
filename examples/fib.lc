@@ -8,7 +8,7 @@ FIB := Y (λfib.λn.(
         1                                   ;;     return 1
         (+ (fib (- n 1)) (fib (- n 2))))))  ;; return fib(n - 1) + fib(n - 2)
 
-;; Test FIB
+;; test FIB
 FIB 0  ;; => 1
 FIB 2  ;; => 2
 FIB 4  ;; => 5

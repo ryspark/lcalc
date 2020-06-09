@@ -1,5 +1,5 @@
-"""Error handling for lc language. Only GenericExceptions should be encountered during running: if another type of error
-is raised and makes it all the way to ErrorHandler, it is assumed to be an internal issue.
+"""Error handling for lcalc language. Only GenericExceptions should be encountered during running: if another type of
+error is raised and makes it all the way to ErrorHandler, it is assumed to be an internal issue.
 """
 
 import sys
@@ -8,8 +8,9 @@ from termcolor import colored
 
 
 class GenericException(Exception):
-    """Templates an error/warning message so that it can be used to throw a lc error/warning. Essentially just a wrapper
-    around parse_args."""
+    """Templates an error/warning message so that it can be used to throw a lcalc error/warning. Essentially just a
+    wrapper around parse_args.
+    """
 
     def __init__(self, msg, exprs=None, start=0, end=-1, diagnosis=True, internal=False):
         """Parses args for GenericException or warning."""
@@ -28,7 +29,7 @@ class GenericException(Exception):
 
 
 class ErrorHandler:
-    """Context manager that will silently suppress Python errors and raise custom lc errors/warnings."""
+    """Context manager that will silently suppress Python errors and raise custom lcalc errors/warnings."""
     ERROR = "red"
     WARNING = "magenta"
 

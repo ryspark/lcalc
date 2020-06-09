@@ -1,4 +1,4 @@
-"""Handles interactive/command-line mode for lc interpreter. Uses cmd as backend."""
+"""Handles interactive/command-line mode for lcalc interpreter. Uses cmd as backend."""
 
 import cmd
 
@@ -19,7 +19,7 @@ class Shell(cmd.Cmd):
         self.line_num = 0
 
     def default(self, line):
-        """Executes arbitrary lc command."""
+        """Executes arbitrary lcalc command."""
         with self.sess.error_handler:  # needed because cmd.Cmd automatically exits on Exception
             self.line_num += 1
             line, add_to_prev = self.sess.preprocess_line(self._tmp_line + line, self.line_num, self._tmp_line)
@@ -38,7 +38,7 @@ class Shell(cmd.Cmd):
     def do_help(self, arg):
         """Doesn't return docs, but rather a short intro."""
         print(
-            "Welcome to the lc interpreter!\n\n"
+            "Welcome to the lcalc interpreter!\n\n"
             "Lambda calculus is a Turing-complete language created by Alonzo Church. This \n"
             "interpreter supports pure lambda calculus as imagined by Church as well as \n"
             "named functions, file imports, and define directives.\n\n"

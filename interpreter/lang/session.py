@@ -1,5 +1,5 @@
-"""Session control for lc language. Implementation of lexical parsing to run the lc interpreter, either in command line
-mode or file interpretation mode.
+"""Session control for lcalc language. Implementation of lexical parsing to run the lc interpreter, either in command
+line mode or file interpretation mode.
 """
 
 import os
@@ -17,7 +17,7 @@ class Session:
         self.error_handler.register_file(path)
 
         self.path = path                # used for error messages
-        self.common_path = common_path  # path to common lc lib
+        self.common_path = common_path  # path to common lcalc lib
 
         self.defines = []    # list of define directives
         self.namespace = {}  # dict of name.expr: NamedFuncs that exist in the current session
@@ -115,7 +115,7 @@ class Session:
             self.error_handler.remove_line(self.path)
 
     def _get_paths(self, path):
-        """Returns [path] if path != 'common' else absolute paths of common lc files."""
+        """Returns [path] if path != 'common' else absolute paths of common .lc files."""
         if path == "common":
             return [os.path.abspath(f"{self.common_path}/{file}") for file in os.listdir(self.common_path)]
         return [os.path.abspath(path)]
