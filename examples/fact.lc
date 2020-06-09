@@ -1,9 +1,17 @@
--- Recursive factorial calculation in lambda calculus.
+-- Recursive factorial calculation.
 
 #import "common"
 
-FACT := Y (λf.λn.IF (ISZERO n) 1 (* n (f (- n 1))))
+FACT := Y (
+    λfact.λn.(
+        IF (ISZERO n)
+            1
+            (* n (fact (- n 1)))
+    )
+)
 
 -- Test FACT
-FACT 1  -- => 2
-FACT 4  -- => 24
+FACT 1  -- => 1
+FACT 2  -- => 2
+FACT 3  -- => 6
+-- FACT 4 runs, but only after about 30 seconds... FACT 5 and above will probably result in recursion error

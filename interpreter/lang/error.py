@@ -30,6 +30,8 @@ class GenericException(Exception):
 
 class ErrorHandler:
     """Context manager that will silently suppress Python errors and raise custom lc errors/warnings."""
+    ERROR = "red"
+    WARNING = "magenta"
 
     def __init__(self, fatal=True):
         self.fatal = fatal
@@ -47,41 +49,62 @@ class ErrorHandler:
         """Removes line from traceback given path. Should be called after successful Session add/run."""
         self.traceback[path] = (None, None)
 
+    @staticmethod
+    def diagnose(error, warning=False):
+        color = ErrorHandler.WARNING if warning else ErrorHandler.ERROR
+
+        diagnosis = "  " + error.expr[:error.start]
+
+        diagnosis += colored(error.expr[error.start:error.end], color, attrs=["bold"])
+        diagnosis += error.expr[error.end:] + "\n"
+
+        diagnosis += "  " + " " * error.start
+        diagnosis += colored("^" + "~" * (error.end - error.start - 1), color, attrs=["bold"])
+
+        return diagnosis
+
     def warn(self, *args, **kwargs):
         """Generates and prints runtime warning message based on args."""
-        self.throw(GenericException(*args, **kwargs), warning=True)
+        error = GenericException(*args, **kwargs)
 
-    def throw(self, error, warning=False):
-        """Throws error or warning using error and self.traceback. error must be a GenericException, and
-        self.traceback must be a dictionary of file: line_num representing origination of error.
-        """
-        color = "magenta" if warning else "red"
+        file, (line, line_num) = next(iter(self.traceback.items()))
+        col = line.index(error.expr) + error.start  # assumes error.expr in line
 
-        error_msg = "Traceback:\n"
-        for file, (line, line_num) in self.traceback.items():
-            if line:
-                error_msg += f"  File '{file}', line {line_num}:\n"
-                error_msg += f"    {line}\n"
+        error_msg = colored(f"{file}:{line_num}:{col}: ", attrs=["bold"])
+        error_msg += colored("warning: ", ErrorHandler.WARNING, attrs=["bold"]) + error.msg
 
-        if error.internal:
-            error_msg += colored("[internal] ", color, attrs=["bold"])
-
-        error_msg += colored("warning: " if warning else "error: ", color, attrs=["bold"]) + error.msg
         print(error_msg)
 
         if not error.internal and error.expr and error.diagnosis:
-            diagnosis = "  " + error.expr[:error.start]
+            print(ErrorHandler.diagnose(error, warning=True))
 
-            diagnosis += colored(error.expr[error.start:error.end], color, attrs=["bold"])
-            diagnosis += error.expr[error.end:] + "\n"
+    def throw(self, error):
+        """Throws error using error and self.traceback. error must be a GenericException, and self.traceback must be a
+        dict of file: (line, line_num) representing origination of error.
+        """
+        error_msg = ""
+        lines = 0
+        for file, (line, line_num) in self.traceback.items():  # assfumes dict is insertion-ordered
+            if line:
+                error_msg += f"  File '{file}', line {line_num}:\n"
+                error_msg += f"    {line}\n"
+                lines += 1
 
-            diagnosis += "  " + " " * error.start
-            diagnosis += colored("^" + "~" * (error.end - error.start - 1), color, attrs=["bold"])
+        if lines > 1:
+            error_msg = "Traceback:\n" + error_msg
 
-            print(diagnosis)
+        if error.internal:
+            error_msg += colored("[internal] ", ErrorHandler.ERROR, attrs=["bold"])
 
-        if self.fatal and not warning:
+        error_msg += colored("error: ", ErrorHandler.ERROR, attrs=["bold"]) + error.msg
+        print(error_msg)
+
+        if not error.internal and error.expr and error.diagnosis:
+            print(ErrorHandler.diagnose(error))
+
+        if self.fatal:
             sys.exit(1)
+        self.traceback = {}  # if error occurred, reset traceback (no need if error is fatal)
 
     def __enter__(self):
         return self
@@ -92,6 +115,8 @@ class ErrorHandler:
             self.throw(GenericException("keyboard interrupt"))
         elif exc_type is GenericException:
             self.throw(exc_val)
+        elif exc_type is RecursionError:
+            self.throw(GenericException("beta normal form exists, but maximum recursion depth exceeded"))
         elif exc_type is not None:
             print_tb(exc_tb)
             self.throw(GenericException(f"unknown error: '{exc_type.__name__}: {exc_val}'", internal=True))

@@ -10,6 +10,7 @@ from lang.lexical import DefineStmt, ExecStmt, ImportStmt, Grammar, NamedFunc
 
 class Session:
     """Governs a lc session, with control over scope of named funcs."""
+    SH_FILE = "<in>"  # command-line interpreter filename
 
     def __init__(self, error_handler, path, common_path, cmd_line):
         self.error_handler = error_handler
@@ -27,7 +28,7 @@ class Session:
         if self.cmd_line:
             self.error_handler.fatal = False
 
-        if path != "<in>":
+        if path != Session.SH_FILE:
             exprs = []
             add_to_prev = False
 
@@ -35,11 +36,14 @@ class Session:
                 with open(path, "r") as file:
                     for line_num, line in enumerate(file):
                         __, add_to_prev = self.preprocess_line(line, line_num + 1, add_to_prev, exprs)
-            except (OSError, IsADirectoryError, FileNotFoundError):
+            except OSError:
                 raise GenericException("'{}' could not be opened", path, diagnosis=False)
 
             for expr in exprs:
                 self.add(*expr)
+
+        elif not cmd_line:
+            raise GenericException("'<in>' is a reserved filename")
 
     @staticmethod
     def preprocess_line(line, line_num, add_to_prev, exprs=None):
@@ -98,8 +102,10 @@ class Session:
                     self.namespace[node_expr].sub_all(exec_stmt, paths, self.namespace)
 
             if self.cmd_line:
-                self.results = [exec_stmt.execute(self.error_handler)]
-                del self.to_exec[line_num]
+                try:
+                    self.results = [exec_stmt.execute(self.error_handler)]
+                finally:
+                    del self.to_exec[line_num]
             else:
                 self.results.append(exec_stmt.execute(self.error_handler))
 

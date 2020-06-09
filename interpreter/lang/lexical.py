@@ -184,7 +184,7 @@ class NamedFunc(Grammar):
             return False
         elif eq != expr.rfind(":="):
             start = original_expr.rfind(":=")
-            raise GenericException("'{}' contains stray ':='", original_expr, start=start, end=start + 2)
+            raise GenericException("'{}' contains illegal reserved ':='", original_expr, start=start, end=start + 2)
 
         lval, rval = expr.split(":=")
 
