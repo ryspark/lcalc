@@ -2,7 +2,7 @@
 
 A lambda calculus interpreter written in Python, supporting both a file interpreter and a command-line interpreter. 
 Supports pure lambda calculus as imagined by Church, but also named functions (`I := λx.x`), `#import`ing of other 
-modules, and `#define` directives.
+modules, and `#define` directives. Made solely for fun during quarantine!
 
 Below is an example program to compute the sum of 50 and 50.
 
@@ -59,11 +59,17 @@ To install, add a symbolic link from `interpreter/lc` to `/usr/local/bin/lc`.
 
 ### Command-line mode
 
-Run `lc` without any arguments to enter interactive interpreter mode.
+Run `lc [args]` to enter interactive interpreter mode.
 
 ### File interpreter mode
 
-Run `lc <filename>.lc` to interpret and execute a `.lc` file. Note that evaluation (i.e., beta reduction) is lazy, and
-all statements that are not `#import`s, `#define`s, or bindings (`NAME := <λ-term>`) will be executed.
+Run `lc [args] <filename>.lc` to interpret and execute a `.lc` file. Note that evaluation (i.e., beta reduction) is 
+lazy, and all statements that are not `#import`s, `#define`s, or bindings (`NAME := <λ-term>`) will be executed.
+
+### Optional arguments
+
+1. `-s`, `--sub`: if used, this flag turns off automatic reverse substitution of named statements into beta-reduced 
+λ-term. This flag will not turn off automatic conversion of Church numerals to numbers. Note that Church numerals always
+take precedence over named statements; that is, `λf.x.x` -> `0`, not `FALSE`.
 
 See [`examples`](examples) for sample `.lc` programs.

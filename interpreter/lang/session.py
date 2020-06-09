@@ -12,17 +12,19 @@ class Session:
     """Governs a lc session, with control over scope of named funcs."""
     SH_FILE = "<in>"  # command-line interpreter filename
 
-    def __init__(self, error_handler, path, common_path, cmd_line):
+    def __init__(self, error_handler, path, common_path, **flags):
         self.error_handler = error_handler
         self.error_handler.register_file(path)
 
         self.path = path                # used for error messages
         self.common_path = common_path  # path to common lc lib
-        self.cmd_line = cmd_line        # whether or not in command-line mode
 
         self.defines = []    # list of define directives
         self.namespace = {}  # dict of name.expr: NamedFuncs that exist in the current session
         self.to_exec = {}    # dict of line num: ExecStmts to execute
+
+        self.cmd_line = flags.get("cmd_line", False)  # whether or not in command-line mode
+        self.sub = flags.get("sub", False)            # whether or not to sub NamedStmts after reduction of ExecStmt
 
         if self.cmd_line:
             self.error_handler.fatal = False
@@ -41,7 +43,7 @@ class Session:
             for expr in exprs:
                 self.add(*expr)
 
-        elif not cmd_line:
+        elif not self.cmd_line:
             raise GenericException("'<in>' is a reserved filename")
 
     @staticmethod
@@ -75,7 +77,9 @@ class Session:
 
         if isinstance(stmt, ImportStmt):
             for path in self._get_paths(stmt.path):
-                loaded_module = Session(self.error_handler, path, self.common_path, self.cmd_line)
+                flags = dict(cmd_line=self.cmd_line, sub=self.sub)
+                loaded_module = Session(self.error_handler, path, self.common_path, **flags)
+
                 self.namespace = {**loaded_module.namespace, **self.namespace}
                 # on import, ExecStmts from the imported module will not be run
                 # local namespace also takes precedence over the loaded module's namespace
@@ -98,12 +102,12 @@ class Session:
         for line_num, exec_stmt in list(self.to_exec.items()):  # run ExecStmts
             self.error_handler.register_line(self.path, str(exec_stmt), line_num)
 
-            for node_expr, paths in exec_stmt.flattened.items():  # substitue NamedStmts if used
+            for node_expr, (__, paths) in exec_stmt.flattened().items():  # substitute NamedStmts if used
                 if node_expr in self.namespace:
                     self.namespace[node_expr].sub_all(exec_stmt, paths, self.namespace)
 
             try:
-                print(exec_stmt.execute(self.error_handler))
+                print(exec_stmt.execute(self.error_handler, self.sub, self.namespace))
             finally:
                 if self.cmd_line:
                     del self.to_exec[line_num]
