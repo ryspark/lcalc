@@ -5,4 +5,4 @@ S      := λx.λy.λz.x z (y z)
 K      := λx.λy.x
 I      := λx.x
 Y      := λf.(λx.f (x x))(λx.f (x x))
-TURING := (λx.λf.f (x x f))(λx.λf f (x x f))
+TURING := (λx.λf.f (x x f))(λx.λf.f (x x f))

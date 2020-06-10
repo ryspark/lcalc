@@ -37,13 +37,13 @@ Executing `#import "common"` will import a number of useful named functions:
 
 #### Basic operations
 
-1. **Logic**: `TRUE`, `FALSE`, `AND`, `OR`, `NOT`, `ISZERO`, `=`, `!=`, `>=`, `<=`, `>`, `<`, `IF`
-2. **Math**: `SUCC`, `PRED`, `+`, `-`, `*`, `/`, `**`
-3. **Combinators**: `S`, `K`, `I`, `Y`, `TURING`
+- **Logic**: `TRUE`, `FALSE`, `AND`, `OR`, `NOT`, `ISZERO`, `=`, `!=`, `>=`, `<=`, `>`, `<`, `IF`
+- **Math**: `SUCC`, `PRED`, `+`, `-`, `*`, `/`, `**`
+- **Combinators**: `S`, `K`, `I`, `Y`, `TURING`
 
 #### Datatypes
 
-1. **List**: `LIST`, `NIL`, `CONS`, `HEAD`, `TAIL`, `ISNIL`
+- **List**: `LIST`, `NIL`, `CONS`, `HEAD`, `TAIL`, `ISNIL`
 
 ## Syntax
 
