@@ -15,6 +15,36 @@ Below is an example program to compute the sum of 50 and 50.
 Everything (besides `#import`, `#define`, and named functions) is implemented in pure lambda calculus, making even basic
 arithmetic *extremely* slow.
 
+## Features
+
+### `lcalc` interpreter
+
+In addition to supporting evaluation of arbitrary λ-terms via a normal-order reduction strategy and detection of 
+λ-terms that do not have a beta-normal form, the `lcalc` interpreter supports the following features:
+
+1. **Named functions**: assigns a name to an arbitrary λ-term, which can then be used later on. They will also be 
+reverse-substituted after execution (e.g., if `I` is bound to `λx.x`, execution of `λx.x` will yield `I`). This feature 
+can be turned on/off via command-line args.
+2. **`#import` statements**: loads named functions from another module into current one.
+3. **`#define` statements**: replaces arbitrary expression with another before interpretation.
+4. **Church numerals**: natural numbers (0, 1, 2...) are recognized at interpret-time by `lcalc` and will be 
+automatically treated as Church numerals. Likewise, any λ-term that is an unsigned Church numeral will be replaced by 
+its numerical equivalent after execution.
+
+### `common` definitions
+
+Executing `#import "common"` will import a number of useful named functions:
+
+#### Basic operations
+
+1. **Logic**: TRUE, FALSE, AND, OR, NOT, ISZERO, =, !=, >=, <=, >, <, IF
+2. **Math**: SUCC, PRED, +, -, *, /, **
+3. **Combinators**: S, K, I, Y, TURING
+
+#### Datatypes
+
+1. **List**: LIST, NIL, CONS, HEAD, TAIL, ISNIL
+
 ## Syntax
 
 ### Lambda calculus syntax
