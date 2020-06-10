@@ -31,6 +31,7 @@ means that function application must be separated by spaces or parentheses.
 
 from abc import abstractmethod, ABC
 from copy import deepcopy
+from itertools import zip_longest
 
 from lang.error import GenericException
 
@@ -601,6 +602,28 @@ class NormalOrderReducer:
         self.reduced = False
         self._flattened = {}
 
+    @staticmethod
+    def _has_pattern(diffs):
+        def grouper(iterable, n, fillvalue=None):
+            # https://stackoverflow.com/questions/434287/what-is-the-most-pythonic-way-to-iterate-over-a-list-in-chunks
+            args = [iter(iterable)] * n
+            return zip_longest(*args, fillvalue=fillvalue)
+
+        pattern = []
+        for idx, diff in enumerate(diffs):
+            if diff not in pattern:
+                pattern.append(diff)
+            else:
+                start = idx
+                break
+        else:
+            return False
+
+        for group in grouper(diffs[start:], len(pattern), 0):
+            if list(group) != pattern:
+                return False
+        return True
+
     def beta_reduce(self, error_handler):
         """In-place normal-order beta reduction of self.tree. error_handler is the current session's error handler."""
         self.tree.alpha_convert(self.used, self.bound)
@@ -618,8 +641,9 @@ class NormalOrderReducer:
             diffs.append(len(self.tree.expr) - prev_len)
             redex, redex_path = self.tree.left_outer_redex()
 
-            if len(diffs[:NormalOrderReducer.RECURSION_LIMIT]) > NormalOrderReducer.RECURSION_LIMIT:
-                if not any(diff < 0 for diff in diffs[NormalOrderReducer.RECURSION_LIMIT:]):
+            if len(diffs[NormalOrderReducer.RECURSION_LIMIT:]) > NormalOrderReducer.RECURSION_LIMIT:
+                to_check = diffs[len(diffs) - NormalOrderReducer.RECURSION_LIMIT:]  # get last 100 elems
+                if NormalOrderReducer._has_pattern(to_check):
                     error_handler.warn("{} does not have a beta-normal form", self.original_expr)
                     break
 
