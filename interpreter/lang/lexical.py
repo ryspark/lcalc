@@ -183,7 +183,7 @@ class NamedFunc(Grammar):
         if eq == -1:
             return False
         elif eq != expr.rfind(":="):
-            start = original_expr.rfind(":=")
+            start = original_expr.index(expr) + expr.rfind(":=")
             raise GenericException("'{}' contains illegal reserved ':='", original_expr, start=start, end=start + 2)
 
         lval, rval = expr.split(":=")

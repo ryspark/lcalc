@@ -85,7 +85,7 @@ class PureGrammar(ABC):
 
         for char in PureGrammar.illegal:
             if char in pre_expr:
-                pos = pre_expr.index(char)
+                pos = pre_expr.index(char) + original_expr.index(pre_expr)
                 msg = "'{}' contains reserved character '{}'"
                 raise GenericException(msg, (original_expr, char), start=pos, end=pos + 1)
 
@@ -382,11 +382,11 @@ class Abstraction(LambdaTerm):
             return False
 
         elif expr.count("λ") != expr.count(".") or (bind != -1 and decl == -1) or (decl != -1 and bind == -1):
-            start = max(original_expr.find("λ"), original_expr.find("."))
+            start = max(original_expr.rfind("λ"), original_expr.rfind("."))
             raise GenericException("'{}' has mismatched binds/declarators", original_expr, start=start, end=start + 1)
 
         elif decl < bind:
-            decl = original_expr.find(".")
+            decl += original_expr.index(expr)
             raise GenericException("'{}' has declarator before bind", original_expr, start=decl, end=decl + 1)
 
         elif bind != 0:
@@ -397,15 +397,10 @@ class Abstraction(LambdaTerm):
         if not Variable.check_grammar(arg, original_expr, False):
             return False
 
-        elif any(Builtin.check_grammar(char, original_expr) for char in arg):
-            start = original_expr.index("λ") + 1
-            end = original_expr.index(".")
-            raise GenericException("'{}' contains an illegal bound variable", original_expr, start=start, end=end)
-
         # check 3: is body valid?
         body = expr[expr.index(".") + 1:]
         if len(body) == 0 or all(Builtin.check_grammar(char, original_expr) for char in body):
-            start = original_expr.index(".") + 1
+            start = expr.index(body) + original_expr.index(expr)
             raise GenericException("'{}' contains an illegal abstraction body", original_expr, start=start)
 
         return True
