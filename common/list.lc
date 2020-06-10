@@ -1,0 +1,13 @@
+;; Basic immutable list implementation and operations
+;; Source: http://pages.cs.wisc.edu/~horwitz/CS704-NOTES/2.LAMBDA-CALCULUS-PART2.html#rec
+;;         https://en.wikipedia.org/wiki/Church_encoding#Church_pairs
+
+LIST  := λh.λt.λs.(s h t)
+NIL   := λa.λx.λy.x
+​​
+CONS  := λh.λt.λs.(s h t)
+
+HEAD  := λl.l (λh.λt.h)
+TAIL  := λl.l (λh.λt.t)
+
+ISNIL := λl.l λh.λt.λx.λy.y
