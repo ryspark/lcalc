@@ -215,17 +215,21 @@ class NamedFunc(Grammar):
         for path in paths:
             fn_stmt.term.set(path, deepcopy(self.term.tree))
 
-    def rsub(self, term):
-        """Reverse-substitutes any occurence of self.term in term for self.name."""
-        for node_expr, (node, paths) in term.flattened().items():
+    def rsub(self, term, recompute):
+        """Reverse-substitutes any occurence of self.term in term for self.name. Returns whether or not flattened needs
+        to be recomputed.
+        """
+        to_recompute = False
+        for node_expr, (node, paths) in term.flattened(recompute).items():
             if self.term.tree.alpha_equals(node):
+                to_recompute = True
                 for path in paths:
                     term.set(path, deepcopy(self.name))
+        return to_recompute
 
-    @property
-    def flattened(self):
+    def flattened(self, recompute=False):
         """Flattened Variables. Used for substitution in Session."""
-        return self.term.flattened
+        return self.term.flattened(recompute)
 
     def __repr__(self):
         return f"{self._cls}(name={repr(self.name)}, replace={repr(self.term)})"
@@ -253,14 +257,13 @@ class ExecStmt(Grammar):
         numberify(self.term)
 
         if sub and namespace:
-            self.term.flattened(recompute=True)  # need to update flattened after beta reduction
+            recompute = True
             for named_stmt in namespace.values():
-                named_stmt.rsub(self.term)
+                recompute = named_stmt.rsub(self.term, recompute)
 
         return self.term.tree.expr
 
-    def flattened(self):
-        """Flattened Variables. Used for substitution in Session. Not a @property for consistency with
-        NormalOrderReducer and LambdaTerm.
+    def flattened(self, recompute=False):
+        """Flattened Variables. Used for substitution in Session.
         """
-        return self.term.flattened()
+        return self.term.flattened(recompute)

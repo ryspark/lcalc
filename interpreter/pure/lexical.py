@@ -202,14 +202,12 @@ class LambdaTerm(PureGrammar):
         dummy = (None, [])
 
         def generate_flattened(node, path, flattened):
-            if not node.tokenizable:
-                flattened[node.expr] = (node, flattened.get(node.expr, dummy)[-1] + [path])
-            else:
-                for idx, sub_node in enumerate(node.nodes):
-                    flattened[sub_node.expr] = (sub_node, flattened.get(sub_node.expr, dummy)[-1] + [path + [idx]])
-                    generate_flattened(sub_node, path + [idx], flattened)
+            for idx, sub_node in enumerate(node.nodes):
+                flattened[sub_node.expr] = (sub_node, flattened.get(sub_node.expr, dummy)[-1] + [path + [idx]])
+                generate_flattened(sub_node, path + [idx], flattened)
 
         if not self._flattened or recompute:
+            self._flattened = {}
             generate_flattened(self, [], self._flattened)
         return self._flattened
 
@@ -625,7 +623,7 @@ class NormalOrderReducer:
             diffs.append(len(self.tree.expr) - prev_len)
             redex, redex_path = self.tree.left_outer_redex()
 
-            if len(diffs) > NormalOrderReducer.RECURSION_LIMIT:
+            if len(diffs[:NormalOrderReducer.RECURSION_LIMIT]) > NormalOrderReducer.RECURSION_LIMIT:
                 if not any(diff < 0 for diff in diffs[NormalOrderReducer.RECURSION_LIMIT:]):
                     error_handler.warn("{} does not have a beta-normal form", self.original_expr)
                     break
@@ -647,7 +645,7 @@ class NormalOrderReducer:
     def flattened(self, recompute=False):
         """Returns self.tree.flattened, plus top-level expr."""
         if not self._flattened or recompute:
-            self._flattened = self.tree.flattened()
+            self._flattened = self.tree.flattened(recompute)
             self._flattened[self.tree.expr] = (self.tree, [[]])
         return self._flattened
 
