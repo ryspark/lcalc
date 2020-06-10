@@ -1,4 +1,4 @@
-;; Recursive Fibonacci calculation.
+;; Recursive Fibonacci calculation
 
 #import "common"
 

@@ -1,7 +1,8 @@
-;; Some common combinators
+;; Some famous combinators
 ;; Source: https://plato.stanford.edu/entries/lambda-calculus/#Com
 
-S := λx.λy.λz.x z (y z)
-I := λx.x
-C := λx.λy.λz.x z y
-Y := λf.(λx.f (x x))(λx.f (x x))
+S      := λx.λy.λz.x z (y z)
+K      := λx.λy.x
+I      := λx.x
+Y      := λf.(λx.f (x x))(λx.f (x x))
+TURING := (λx.λf.f (x x f))(λx.λf f (x x f))

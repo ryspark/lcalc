@@ -1,4 +1,4 @@
-;; Recursive factorial calculation.
+;; Recursive factorial calculation
 
 #import "common"
 
