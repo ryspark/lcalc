@@ -37,17 +37,17 @@ Executing `#import "common"` will import a number of useful named functions:
 
 #### Basic operations
 
-1. **Logic**: TRUE, FALSE, AND, OR, NOT, ISZERO, =, !=, >=, <=, >, <, IF
-2. **Math**: SUCC, PRED, +, -, *, /, **
-3. **Combinators**: S, K, I, Y, TURING
+1. **Logic**: `TRUE`, `FALSE`, `AND`, `OR`, `NOT`, `ISZERO`, `=`, `!=`, `>=`, `<=`, `>`, `<`, `IF`
+2. **Math**: `SUCC`, `PRED`, `+`, `-`, `*`, `/`, `**`
+3. **Combinators**: `S`, `K`, `I`, `Y`, `TURING`
 
 #### Datatypes
 
-1. **List**: LIST, NIL, CONS, HEAD, TAIL, ISNIL
+1. **List**: `LIST`, `NIL`, `CONS`, `HEAD`, `TAIL`, `ISNIL`
 
 ## Syntax
 
-### Lambda calculus syntax
+### Lambda calculus
 
 ```
 <λ-term> ::= <λ-term>                   ; "variable"
@@ -70,9 +70,9 @@ means that function application must be separated by spaces or parentheses.
 ```
 <import_stmt> ::= "#import " <filepath>     ; imports relative to this .lc file ("common" -> common/*.lc)
 <define_stmt> ::= "#define " <char> <char>  ; blindly replaces instances of 1st <char> with 2nd <char> (*)
-                                            ; note that there are a few special cases for the second <char>:
-                                            ;  1. <lambda> will replace all λ with first <char> (**)
-                                            ;  2. <declare> will replace all := with first <char>
+                                            ; note that there are a few special cases for the 2nd <char>:
+                                            ;  1. <lambda> will replace all λ with 1st <char> (**)
+                                            ;  2. <declare> will replace all := with 1st <char>
 
 <named_func>  ::= <var> ":=" <λ-term>       ; only reduced if used later on
 <exec_stmt>   ::= <λ-term>                  ; will be outputted when interpreter is run
