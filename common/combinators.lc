@@ -1,8 +1,14 @@
 ;; Some famous combinators
-;; Source: https://plato.stanford.edu/entries/lambda-calculus/#Com
+;; Source: https://plato.stanford.edu/entries/lambda-calculus/#Com,
+;;         https://jwodder.freeshell.org/lambda.html
 
-S      := λx.λy.λz.x z (y z)
-K      := λx.λy.x
-I      := λx.x
-Y      := λf.(λx.f (x x))(λx.f (x x))
-TURING := (λx.λf.f (x x f))(λx.λf.f (x x f))
+S := λx.λy.λz.x z (y z)
+K := λx.λy.x
+I := λx.x
+B := S (K S) K
+C := S (S (K (S (K S) K)) S) (K K)
+W := S S (K (S K K))
+ω := S I I
+Ω := ω ω
+Θ := (λx.λf.f (x x f))(λx.λf.f (x x f))
+Y := λf.(λx.f (x x)) (λx.f (x x))

@@ -7,6 +7,7 @@ FALSE  := λx.λy.y
 AND    := λx.λy.x y FALSE
 OR     := λx.λy.x TRUE y
 NOT    := λx.x FALSE TRUE
+XOR    := λx.λy.x (y FALSE TRUE) y
 
 ISZERO := λx.x FALSE NOT FALSE
 >=     := λx.λy.ISZERO (x (λn.λf.λx.n (λg.λh.h (g f)) (λu.x) (λu.u)) y)
