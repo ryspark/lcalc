@@ -88,7 +88,7 @@ class PureGrammar(ABC):
             if char in pre_expr:
                 pos = pre_expr.index(char) + original_expr.index(pre_expr)
                 msg = "'{}' contains reserved character '{}'"
-                raise GenericException(msg, (original_expr, char), start=pos, end=pos + 1)
+                raise GenericException(msg, (original_expr, char), start=pos, end=pos + len(char))
 
         expr = pre_expr.strip()
         if expr[0] + expr[-1] == "()" and PureGrammar.are_parens_balanced(expr[1:-1]):

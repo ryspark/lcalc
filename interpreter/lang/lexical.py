@@ -175,8 +175,8 @@ class FuncStmt(Grammar):
             for path in self.flattened().get(node_expr, [[]])[-1]:
                 if isinstance(self.term.get(path[:-1]), Abstraction) and path[-1] == 0:
                     msg = "'{}' contains bound variable already defined in namespace"
-                    start = self.original_expr.index(f"λ{node_expr}")
-                    raise GenericException(msg, self.original_expr, start=start, end=start + 2)
+                    start = self.original_expr.index(f"λ{node_expr}") + 1
+                    raise GenericException(msg, self.original_expr, start=start, end=start + len(node_expr))
 
     def register_namespace(self, namespace):
         """Registers and checks self.term with namespace. Also expands self.term with namespace."""
