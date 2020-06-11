@@ -248,6 +248,16 @@ class LambdaTerm(PureGrammar):
         except TypeError:
             return None, None
 
+    def get(self, idxs):
+        """Gets node at positions specified by idxs. idxs=[] will return self."""
+        if not idxs:
+            return self
+
+        this, *others = idxs
+        if not others:
+            return self.nodes[this]
+        return self.nodes[this].get(others)
+
     def set(self, idxs, node):
         """Sets node at positions specified by idxs. idxs=[] will raise an error."""
         if not idxs:
@@ -604,6 +614,7 @@ class NormalOrderReducer:
 
     @staticmethod
     def _has_pattern(diffs):
+        """Whether or not diffs exhibits a repeated pattern. Used to detect non-beta-reducable exprs."""
         def grouper(iterable, n, fillvalue=None):
             # https://stackoverflow.com/questions/434287/what-is-the-most-pythonic-way-to-iterate-over-a-list-in-chunks
             args = [iter(iterable)] * n
@@ -644,7 +655,7 @@ class NormalOrderReducer:
             if len(diffs[NormalOrderReducer.RECURSION_LIMIT:]) > NormalOrderReducer.RECURSION_LIMIT:
                 to_check = diffs[len(diffs) - NormalOrderReducer.RECURSION_LIMIT:]  # get last 100 elems
                 if NormalOrderReducer._has_pattern(to_check):
-                    error_handler.warn("{} does not have a beta-normal form", self.original_expr)
+                    error_handler.warn("'{}' does not have a beta-normal form", self.original_expr)
                     break
 
         self.tree.expr = PureGrammar.preprocess(self.tree.expr)
@@ -653,8 +664,13 @@ class NormalOrderReducer:
         self.used = {}
         self.bound = {}
 
+    def get(self, idxs):
+        """Gets node specified by idxs."""
+        return self.tree.get(idxs)
+
     def set(self, idxs, node):
-        """Sets self.tree with node at position specified by idxs. An empty list will replace self.tree with node."""
+        """Sets self.tree with node at position specified by idxs. An empty list will replace self.tree with node.
+        """
         try:
             self.tree.set(idxs, node)
         except ValueError:

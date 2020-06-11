@@ -68,7 +68,10 @@ class Session:
         return line, line.count("(") > line.count(")")
 
     def add(self, expr, line_num, original_expr=None):
-        """Adds Grammar object to the current session. Beta-reduction is lazy and is delayed until run is called."""
+        """Adds Grammar object to the current session. Beta-reduction is lazy and is delayed until run is called.
+        However, expansion of NamedStmts that use other NamedStmts in their definitions is not lazy and is handled in
+        this function, rather than in run.
+        """
         self.error_handler.register_line(self.path, expr, line_num)  # in case error is raised
 
         for stmt in self.defines:
@@ -82,32 +85,28 @@ class Session:
 
                 self.namespace = {**loaded_module.namespace, **self.namespace}
                 # on import, ExecStmts from the imported module will not be run
-                # local namespace also takes precedence over the loaded module's namespace
+                # local namespace also takes precedence over the loaded module's namespace in the case of name conflicts
 
         elif isinstance(stmt, DefineStmt):
             self.defines.append(stmt)
 
         elif isinstance(stmt, NamedFunc):
+            stmt.register_namespace(self.namespace)  # NamedStmt substitution is eager
             self.namespace[stmt.name.expr] = stmt
 
         elif isinstance(stmt, ExecStmt):
+            stmt.register_namespace(self.namespace)
             self.to_exec[line_num] = stmt
 
         self.error_handler.remove_line(self.path)  # error was not raised
 
     def run(self):
-        """Runs this session's executable statements by expanding them and then beta-reducing them. Will raise any
-        errors that are encountered.
-        """
-        for line_num, exec_stmt in list(self.to_exec.items()):  # run ExecStmts
+        """Runs this session's executable statements by beta-reducing them."""
+        for line_num, exec_stmt in list(self.to_exec.items()):
             self.error_handler.register_line(self.path, str(exec_stmt), line_num)
 
-            for node_expr, (__, paths) in exec_stmt.flattened().items():  # substitute NamedStmts if used
-                if node_expr in self.namespace:
-                    self.namespace[node_expr].sub_all(exec_stmt, paths, self.namespace)
-
             try:
-                print(exec_stmt.execute(self.error_handler, self.sub, self.namespace))
+                print(exec_stmt.execute(self.error_handler, self.sub))
             finally:
                 if self.cmd_line:
                     del self.to_exec[line_num]
@@ -117,5 +116,5 @@ class Session:
     def _get_paths(self, path):
         """Returns [path] if path != 'common' else absolute paths of common .lc files."""
         if path == "common":
-            return [os.path.abspath(f"{self.common_path}/{file}") for file in os.listdir(self.common_path)]
+            return [os.path.abspath(f"{self.common_path}/{file}") for file in sorted(os.listdir(self.common_path))]
         return [os.path.abspath(path)]

@@ -24,7 +24,7 @@ from copy import deepcopy
 
 from lang.error import GenericException
 from lang.numerical import cnumberify, numberify
-from pure.lexical import Application, LambdaTerm, Variable, NormalOrderReducer, PureGrammar
+from pure.lexical import Abstraction, Application, LambdaTerm, Variable, NormalOrderReducer, PureGrammar
 
 
 PureGrammar.illegal.append(";;")   # characters for signifying beginning of comment
@@ -66,14 +66,18 @@ class Grammar(ABC):
         """Similar to LambdaTerm's generate_tree, this method infers the type of expr and returns an object of the
         correct grammar subclass.
         """
-        if original_expr is None:
-            original_expr = expr
 
-        for subclass_name in cls.__subclasses__():
-            subclass = globals()[subclass_name.__name__]
-            if subclass.check_grammar(expr, original_expr):
-                return subclass(expr, original_expr)
-        raise GenericException("'{}' is not valid lcalc grammar", original_expr)
+        def _infer(cls, expr, original_expr):
+            for subclass_name in cls.__subclasses__():
+                subclass = globals()[subclass_name.__name__]
+                if subclass.__subclasses__():
+                    return _infer(subclass_name, expr, original_expr)
+                elif subclass.check_grammar(expr, original_expr):
+                    return subclass(expr, original_expr)
+
+            raise GenericException("'{}' is not valid lcalc grammar", original_expr)
+
+        return _infer(cls, expr, original_expr if original_expr else expr)
 
     def __repr__(self):
         return f"{self._cls}('{self.expr}')"
@@ -158,7 +162,37 @@ class DefineStmt(Grammar):
         return expr.replace(to_replace, replacement)
 
 
-class NamedFunc(Grammar):
+class FuncStmt(Grammar):
+    """Superclass for function statements (executable or named) in lcalc."""
+    term: NormalOrderReducer
+    namespace: dict
+
+    def _check_namespace(self):
+        """If named func is used as bound abstraction variable, this method raises a GenericException. Called during
+        register_namespace.
+        """
+        for node_expr in self.namespace:
+            for path in self.flattened().get(node_expr, [[]])[-1]:
+                if isinstance(self.term.get(path[:-1]), Abstraction) and path[-1] == 0:
+                    msg = "'{}' contains bound variable already defined in namespace"
+                    start = self.original_expr.index(f"λ{node_expr}")
+                    raise GenericException(msg, self.original_expr, start=start, end=start + 2)
+
+    def register_namespace(self, namespace):
+        """Registers and checks self.term with namespace. Also expands self.term with namespace."""
+        self.namespace = namespace
+        self._check_namespace()
+
+        for node_expr, (__, paths) in self.flattened().items():
+            if node_expr in self.namespace:
+                self.namespace[node_expr].sub_paths(self, paths)
+
+    def flattened(self, recompute=False):
+        """Flattened Variables. Used for substitution in Session."""
+        return self.term.flattened(recompute)
+
+
+class NamedFunc(FuncStmt):
     """NamedFuncs represent binding statements in lcalc: <NAME> := <λ-term>."""
 
     def __init__(self, expr, original_expr):
@@ -190,7 +224,7 @@ class NamedFunc(Grammar):
 
         # check 2: is l-value a Variable/number?
         if LambdaTerm.infer_type(lval, original_expr) is not Variable:
-            msg = "l-value of '{}' is not a valid Variable"
+            msg = "l-value of '{}' is not a valid variable"
             raise GenericException(msg, original_expr, end=original_expr.index(":="))
 
         elif PureGrammar.preprocess(lval, original_expr).isdigit():
@@ -204,16 +238,10 @@ class NamedFunc(Grammar):
 
         return True
 
-    def sub_all(self, fn_stmt, paths, namespace):
-        """Substitutes self.term (also recursively substituted here) for all paths in paths. namespace is the dict of
-        name.expr: NamedStmts that is used to substitute self.term.
-        """
-        for node_expr, (__, secondary_paths) in self.flattened().items():  # substitute NamedStmts within self.term
-            if node_expr in namespace:
-                namespace[node_expr].sub_all(self, secondary_paths, namespace)
-
+    def sub_paths(self, func_stmt, paths):
+        """Substitutes self.term.tree for every path in paths in func_stmt."""
         for path in paths:
-            fn_stmt.term.set(path, deepcopy(self.term.tree))
+            func_stmt.term.set(path, deepcopy(self.term.tree))
 
     def rsub(self, term, recompute):
         """Reverse-substitutes any occurence of self.term in term for self.name. Returns whether or not flattened needs
@@ -224,24 +252,21 @@ class NamedFunc(Grammar):
             if self.term.tree.alpha_equals(node):
                 to_recompute = True
                 for path in paths:
-                    term.set(path, deepcopy(self.name))
+                    term.set(path, self.name)
         return to_recompute
-
-    def flattened(self, recompute=False):
-        """Flattened Variables. Used for substitution in Session."""
-        return self.term.flattened(recompute)
 
     def __repr__(self):
         return f"{self._cls}(name={repr(self.name)}, replace={repr(self.term)})"
 
 
-class ExecStmt(Grammar):
+class ExecStmt(FuncStmt):
     """Another thin wrapper around NormalOrderReducer, which provides functionality for directly executing LambdaTerm
     statements.
     """
 
     def __init__(self, expr, original_expr):
         super().__init__(expr, original_expr)
+
         self.term = NormalOrderReducer(expr, original_expr)
         cnumberify(self.term)
 
@@ -249,21 +274,16 @@ class ExecStmt(Grammar):
     def check_grammar(expr, original_expr):
         return LambdaTerm.infer_type(expr, original_expr) is not None
 
-    def execute(self, error_handler, sub, namespace=None):
+    def execute(self, error_handler, sub):
         """Running an ExecStmt is equivalent to beta-reducing its term. If sub, this method will reverse substitutes
         names of NamedStmts back into self.term after reducing it.
         """
         self.term.beta_reduce(error_handler)
         numberify(self.term)
 
-        if sub and namespace:
+        if sub and self.namespace:
             recompute = True
-            for named_stmt in namespace.values():
+            for named_stmt in self.namespace.values():
                 recompute = named_stmt.rsub(self.term, recompute)
 
         return self.term.tree.expr
-
-    def flattened(self, recompute=False):
-        """Flattened Variables. Used for substitution in Session.
-        """
-        return self.term.flattened(recompute)
