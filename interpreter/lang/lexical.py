@@ -217,8 +217,10 @@ class NamedFunc(FuncStmt):
         if eq == -1:
             return False
         elif eq != expr.rfind(":="):
+            if expr not in original_expr:
+                original_expr = expr
             start = original_expr.index(expr) + expr.rfind(":=")
-            raise GenericException("'{}' contains illegal reserved ':='", original_expr, start=start, end=start + 2)
+            raise GenericException("'{}' contains reserved ':='", original_expr, start=start, end=start + 2)
 
         lval, rval = expr.split(":=")
 
