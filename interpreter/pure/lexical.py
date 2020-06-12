@@ -638,6 +638,7 @@ class NormalOrderReducer:
     def beta_reduce(self, error_handler):
         """In-place normal-order beta reduction of self.tree. error_handler is the current session's error handler."""
         self.tree.alpha_convert(self.used, self.bound)
+        error_handler.register_step("α", self.tree.expr)
 
         diffs = []
         redex, redex_path = self.tree.left_outer_redex()
@@ -648,6 +649,7 @@ class NormalOrderReducer:
 
             prev_len = len(self.tree.expr)
             self.set(redex_path, body.sub(arg, new_term))
+            error_handler.register_step("β", self.tree.expr)
 
             diffs.append(len(self.tree.expr) - prev_len)
             redex, redex_path = self.tree.left_outer_redex()

@@ -1,5 +1,5 @@
-"""Error handling for lcalc language. Only GenericExceptions should be encountered during running: if another type of
-error is raised and makes it all the way to ErrorHandler, it is assumed to be an internal issue.
+"""Error handling and verbose output for lcalc language. Only GenericExceptions should be encountered during running:
+if another type of error is raised and makes it all the way to ErrorHandler, it is assumed to be an internal issue.
 """
 
 import sys
@@ -29,12 +29,15 @@ class GenericException(Exception):
 
 
 class ErrorHandler:
-    """Context manager that will silently suppress Python errors and raise custom lcalc errors/warnings."""
+    """Context manager that will silently suppress Python errors and raise custom lcalc errors/warnings. Also handles
+    verbose output during reduction.
+    """
     ERROR = "red"
     WARNING = "magenta"
 
-    def __init__(self, fatal=True):
+    def __init__(self, fatal=True, verbose=False):
         self.fatal = fatal
+        self.verbose = verbose
         self.traceback = {}
 
     def register_file(self, path):
@@ -48,6 +51,11 @@ class ErrorHandler:
     def remove_line(self, path):
         """Removes line from traceback given path. Should be called after successful Session add/run."""
         self.traceback[path] = (None, None)
+
+    def register_step(self, mode, new_expr):
+        """Registers and prints step during beta reduction. Will only print if self.verbose."""
+        if self.verbose:
+            print(colored(mode, attrs=["bold"]) + f": {new_expr}")
 
     @staticmethod
     def diagnose(error, warning=False):

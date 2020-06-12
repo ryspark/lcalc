@@ -107,4 +107,7 @@ lazy, and all statements that are not `#import`s, `#define`s, or bindings (`NAME
 λ-term. This flag will not turn off automatic conversion of Church numerals to numbers. Note that Church numerals take 
 precedence over named statements; that is, `λf.x.x` -> `0`, not `FALSE`.
 
+2. `-v`, `--verbose`: if used, this flag turns on verbose messages during reduction; i.e., will display all 
+intermediate alpha and beta reduction steps.
+
 See [`examples`](examples) for sample `.lc` programs.

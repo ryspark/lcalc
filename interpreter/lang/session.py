@@ -25,9 +25,10 @@ class Session:
 
         self.cmd_line = flags.get("cmd_line", False)  # whether or not in command-line mode
         self.sub = flags.get("sub", False)            # whether or not to sub NamedStmts after reduction of ExecStmt
+        self.verbose = flags.get("verbose", False)    # whether or not to be verbose during ExecStmt reduction
 
-        if self.cmd_line:
-            self.error_handler.fatal = False
+        self.error_handler.fatal = not self.cmd_line
+        self.error_handler.verbose = self.verbose
 
         if path != Session.SH_FILE:
             exprs = []
@@ -80,7 +81,7 @@ class Session:
 
         if isinstance(stmt, ImportStmt):
             for path in self._get_paths(stmt.path):
-                flags = dict(cmd_line=self.cmd_line, sub=self.sub)
+                flags = dict(cmd_line=self.cmd_line, sub=self.sub, verbose=self.verbose)
                 loaded_module = Session(self.error_handler, path, self.common_path, **flags)
 
                 self.namespace = {**loaded_module.namespace, **self.namespace}

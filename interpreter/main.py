@@ -19,15 +19,17 @@ def main():
 
     with ErrorHandler() as error_handler:
         parser = argparse.ArgumentParser()
-        parser.add_argument("file", help="file to interpret and run (if empty, goes to command-line mode)", nargs="?")
+        parser.add_argument("file", help="file to interpret (if empty, command-line mode)", nargs="?")
         parser.add_argument("-s", "--sub", help="don't substitute named stmts after reduction", action="store_false")
+        parser.add_argument("-v", "--verbose", help="verbose output during reduction", action="store_true")
         args = parser.parse_args()
 
         COMMON = os.path.join(__file__[:__file__.rfind("/")], "../common")
 
         if args.file is not None:
-            sess = Session(error_handler, args.file, COMMON, cmd_line=False, sub=args.sub)
+            sess = Session(error_handler, args.file, COMMON, cmd_line=False, sub=args.sub, verbose=args.verbose)
             sess.run()
 
         else:
-            Shell(Session(error_handler, Session.SH_FILE, COMMON, cmd_line=True, sub=args.sub)).cmdloop()
+            sess = Session(error_handler, Session.SH_FILE, COMMON, cmd_line=True, sub=args.sub, verbose=args.verbose)
+            Shell(sess).cmdloop()
