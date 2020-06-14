@@ -205,9 +205,6 @@ class NamedFunc(FuncStmt):
         self.term = NormalOrderReducer(term)
         cnumberify(self.term)
 
-        if self.name.expr in self.flattened():
-            raise GenericException("recursive definitions not supported", self.term)
-
     @staticmethod
     def check_grammar(expr, original_expr):
         expr = Grammar.preprocess(expr)
