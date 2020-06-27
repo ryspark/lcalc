@@ -31,7 +31,7 @@ class Shell(cmd.Cmd):
                 self._tmp_line = ""
                 self.prompt = self._tmp_prompt
 
-                if not line.isspace():
+                if line and not line.isspace():
                     self.sess.add(line, self.line_num)
                     self.sess.run()
 
