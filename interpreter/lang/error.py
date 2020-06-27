@@ -94,7 +94,7 @@ class ErrorHandler:
         """
         error_msg = ""
         lines = 0
-        for file, (line, line_num) in self.traceback.items():  # assfumes dict is insertion-ordered
+        for file, (line, line_num) in self.traceback.items():  # assumes dict is insertion-ordered
             if line:
                 error_msg += f"  File '{file}', line {line_num}:\n"
                 error_msg += f"    {line}\n"

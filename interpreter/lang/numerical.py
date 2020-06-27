@@ -55,7 +55,12 @@ def cnumberify(nor):
     for node_expr, (__, paths) in nor.flattened().items():
         if node_expr.isdigit():
             for path in paths:
-                nor.set(path, cnumber(node_expr))
+                if isinstance(nor.get(path[:-1]), Abstraction) and path[-1] == 0:
+                    msg = "'{}' contains natural number as bound variable"
+                    start = nor.original_expr.index(f"λ{node_expr}") + 1
+                    raise GenericException(msg, nor.original_expr, start=start, end=start + len(node_expr))
+                else:
+                    nor.set(path, cnumber(node_expr))
 
 
 def numberify(nor):
